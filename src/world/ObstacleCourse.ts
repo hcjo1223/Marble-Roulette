@@ -460,7 +460,6 @@ export class ObstacleCourse {
       const dx = x1 - x0;
       const dz = z1 - z0;
       const yaw = Math.atan2(dx, dz);
-      const wallSegLen = Math.hypot(dx, dz) / Math.cos(TRACK_SLOPE) + 0.95;
       const floorSegLen = dz / Math.cos(TRACK_SLOPE) + 0.4;
       const halfW = this.getTrackHalfWidthAtZ(zMid);
       const floorHalfW = halfW + Math.abs(dx) * 0.6 + 0.45;
@@ -506,40 +505,59 @@ export class ObstacleCourse {
       const rightX = Math.cos(yaw);
       const rightZ = -Math.sin(yaw);
 
+      const hw0 = this.getTrackHalfWidthAtZ(z0);
+      const hw1 = this.getTrackHalfWidthAtZ(z1);
+
       for (const side of [-1, 1]) {
-        const wx = xMid + side * rightX * (halfW + 0.35);
-        const wz = zMid + side * rightZ * (halfW + 0.35);
+        const wx0 = x0 + side * (hw0 + 0.35);
+        const wx1 = x1 + side * (hw1 + 0.35);
+        const wx = (wx0 + wx1) * 0.5;
+        const wz = zMid;
         const wy = yMid + wallHeight * 0.5;
 
+        const wDx = wx1 - wx0;
+        const wYaw = Math.atan2(wDx, dz);
+        const wSegLen = Math.hypot(wDx, dz) / Math.cos(TRACK_SLOPE) + 0.85;
+        const sideWallQuat = new THREE.Quaternion().setFromEuler(
+          new THREE.Euler(TRACK_SLOPE, wYaw, 0, 'YXZ')
+        );
+
         const wallMesh = new THREE.Mesh(
-          new THREE.BoxGeometry(0.7, wallHeight, wallSegLen),
+          new THREE.BoxGeometry(0.7, wallHeight, wSegLen),
           wallMat
         );
         wallMesh.position.set(wx, wy, wz);
-        wallMesh.quaternion.copy(wallQuat);
+        wallMesh.quaternion.copy(sideWallQuat);
         wallMesh.castShadow = true;
         wallMesh.receiveShadow = true;
         this.courseGroup.add(wallMesh);
 
         if (!isBridge) {
           const cap = new THREE.Mesh(
-            new THREE.BoxGeometry(0.78, 0.22, wallSegLen),
+            new THREE.BoxGeometry(0.78, 0.22, wSegLen),
             zMid >= 100
               ? new THREE.MeshStandardMaterial({ color: isTkd ? 0xdc2626 : 0x22c55e })
               : wallCapMat
           );
           cap.position.set(wx, yMid + wallHeight + 0.1, wz);
-          cap.quaternion.copy(wallQuat);
+          cap.quaternion.copy(sideWallQuat);
           this.courseGroup.add(cap);
         }
 
+        const colliderHalfH = isBridge ? wallHeight * 0.5 + 0.2 : wallHeight * 0.5 + 2.2;
+        const colliderCenterY = isBridge ? wy : yMid + colliderHalfH;
         const wallBody = this.createBody(
           RAPIER.RigidBodyDesc.fixed()
-            .setTranslation(wx, wy, wz)
-            .setRotation({ x: wallQuat.x, y: wallQuat.y, z: wallQuat.z, w: wallQuat.w })
+            .setTranslation(wx, colliderCenterY, wz)
+            .setRotation({
+              x: sideWallQuat.x,
+              y: sideWallQuat.y,
+              z: sideWallQuat.z,
+              w: sideWallQuat.w,
+            })
         );
         this.world.createCollider(
-          RAPIER.ColliderDesc.cuboid(0.38, wallHeight * 0.5 + 0.2, wallSegLen * 0.5)
+          RAPIER.ColliderDesc.cuboid(0.42, colliderHalfH, wSegLen * 0.5)
             .setFriction(0.0)
             .setRestitution(0.4)
             .setCollisionGroups(envGroup),

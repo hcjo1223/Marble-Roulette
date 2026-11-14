@@ -612,14 +612,26 @@ export class RagdollRacer {
       return;
     }
 
-    // Check out-of-bounds fall respawn onto curved track center
+    // Check out-of-bounds (sideways escape or fall) & respawn
+    const centerX = trackCenterXAtZ(pos.z);
+    const halfWidth = trackHalfWidthAtZ(pos.z);
+    const lateralDist = Math.abs(pos.x - centerX);
     const expectedFloorY = trackHeightAtZ(pos.z);
-    if (pos.y < expectedFloorY - 9.5) {
-      const safeZ = Math.max(4, pos.z - 4);
+
+    const inLastSection = pos.z >= 98;
+    const isOffSide = lateralDist > halfWidth + 0.95;
+    const isFallen = inLastSection
+      ? pos.y < expectedFloorY - 2.2
+      : pos.y < expectedFloorY - 8.5;
+
+    if (isFallen || isOffSide) {
+      // If knocked off in the last section (Zone 4-5), move racer back to start of last section (Z = 100.0)
+      const safeZ = inLastSection ? 100.0 : Math.max(4, pos.z - 4);
       const safeCX = trackCenterXAtZ(safeZ);
+      const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
       const respawnPos = new THREE.Vector3(
-        safeCX + (Math.random() - 0.5) * 4.5,
-        trackHeightAtZ(safeZ) + 3.2,
+        safeCX + (Math.random() - 0.5) * safeSpan,
+        trackHeightAtZ(safeZ) + 2.8,
         safeZ
       );
       this.teleportTo(respawnPos);
@@ -650,9 +662,7 @@ export class RagdollRacer {
     }
 
     // Autonomous RUNNING Steering + Randomness along curved track!
-    const centerX = trackCenterXAtZ(pos.z);
     const lookAheadCenterX = trackCenterXAtZ(pos.z + 5.0);
-    const halfWidth = trackHalfWidthAtZ(pos.z);
     const safeHalfWidth = Math.max(2.2, halfWidth - 1.3);
 
     // Sinusoidal wander + lane preference relative to curved track center
@@ -708,8 +718,8 @@ export class RagdollRacer {
       }
     }
 
-    // Prevent any floor seam or collider penetration from trapping a character
-    if (pos.y < expectedFloorY + 0.55) {
+    // Prevent any floor seam or collider penetration from trapping a character inside track bounds
+    if (lateralDist <= halfWidth + 0.15 && pos.y < expectedFloorY + 0.55) {
       this.torsoBody.setTranslation(
         { x: pos.x, y: expectedFloorY + 1.15, z: pos.z },
         true

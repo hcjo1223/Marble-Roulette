@@ -776,7 +776,10 @@ class RagdollDerbyGame {
 
       if (this.phase === 'RACING' && r.state !== 'FINISHED') {
         const pos = r.getPosition();
-        if (pos.z >= FINISH_Z) {
+        const withinTrackWidth =
+          Math.abs(pos.x - this.course.getTrackCenterX(pos.z)) <=
+          this.course.getTrackHalfWidthAtZ(pos.z) + 0.9;
+        if (pos.z >= FINISH_Z && withinTrackWidth) {
           this.finishedRacers.push(r);
           const order = this.finishedRacers.length;
           r.markFinished(order, this.raceElapsed);
