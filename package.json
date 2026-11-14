@@ -1,0 +1,22 @@
+{
+  "name": "marble-roulette",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build && cp -r dist/* docs/ && touch dist/.nojekyll docs/.nojekyll",
+    "preview": "vite preview"
+  },
+  "devDependencies": {
+    "@types/canvas-confetti": "^1.9.0",
+    "@types/three": "^0.187.0",
+    "typescript": "~7.0.2",
+    "vite": "^8.3.6"
+  },
+  "dependencies": {
+    "@dimforge/rapier3d-compat": "^0.21.0",
+    "canvas-confetti": "^1.9.4",
+    "three": "^0.187.0"
+  }
+}

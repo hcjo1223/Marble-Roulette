@@ -1,0 +1,252 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ragdoll Derby 3D — 로블록스풍 3D 래그돌 장애물 레이스 추첨기</title>
+    <meta
+      name="description"
+      content="Three.js와 Rapier3D 웹어셈블리 물리 엔진 기반 3D 블록 캐릭터(R6) 액티브 래그돌 장애물 레이스 내기 및 추첨 웹 게임"
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@600;700&family=Plus+Jakarta+Sans:wght@500;600;700;800&display=swap"
+      rel="stylesheet"
+    />
+  </head>
+  <body>
+    <div id="app">
+      <!-- 3D WebGL Viewport -->
+      <div id="canvas-container" aria-label="3D Ragdoll Obstacle Race Viewport"></div>
+
+      <!-- Cinema Slow-Motion Letterbox Bars -->
+      <div id="letterbox-top" class="letterbox-bar"></div>
+      <div id="letterbox-bottom" class="letterbox-bar"></div>
+
+      <!-- Top Broadcast Header -->
+      <header id="top-bar" class="hud-panel">
+        <div class="brand-group">
+          <button
+            id="btn-toggle-setup"
+            class="icon-btn"
+            title="참가자 설정 패널 열기/닫기"
+            aria-label="참가자 설정 패널 토글"
+          >
+            ☰ 설정
+          </button>
+          <div class="brand-titles">
+            <h1>RAGDOLL DERBY 3D</h1>
+            <span class="brand-sub">R6 Active Ragdoll · Rapier3D Physics Roulette</span>
+          </div>
+        </div>
+
+        <div class="telemetry-strip">
+          <div class="stat-chip">
+            <span class="stat-label">상태</span>
+            <span id="hud-race-state" class="stat-value state-ready">대기 중</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">참가 인원</span>
+            <span id="hud-racer-count" class="stat-value">12명</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">당첨 조건</span>
+            <span id="hud-win-rule" class="stat-value accent-amber">1등 당첨</span>
+          </div>
+          <div class="stat-chip">
+            <span class="stat-label">경과 시간</span>
+            <span id="hud-timer" class="stat-value mono">00.0s</span>
+          </div>
+        </div>
+
+        <div class="top-actions">
+          <button id="btn-blast-test" class="secondary-btn" title="전체 캐릭터 래그돌 충격 테스트">
+            💥 래그돌 충격파
+          </button>
+          <button id="btn-bgm-toggle" class="icon-btn" title="배경음악 켜기/끄기">
+            🎵 BGM
+          </button>
+          <button id="btn-sound-toggle" class="icon-btn" title="효과음 켜기/끄기">
+            🔊 효과음
+          </button>
+        </div>
+      </header>
+
+      <!-- Left Setup & Participant Control Drawer -->
+      <aside id="setup-panel" class="hud-panel">
+        <div class="panel-header">
+          <h2>참가자 및 내기 설정</h2>
+          <span id="parsed-count-badge" class="count-badge">12명 준비됨</span>
+        </div>
+
+        <div class="form-section">
+          <label for="participants-input" class="field-label">
+            참가자 이름 입력 <small>(쉼표/줄바꿈 구분, <code>이름*수량</code> 지원)</small>
+          </label>
+          <textarea
+            id="participants-input"
+            rows="5"
+            placeholder="예: 김철수*2, 이영희, 박민수*3..."
+            spellcheck="false"
+          >김팀장, 이선임, 박대리, 최사원, 정과장, 강매니저, 조디자이너, 윤개발, 장기획, 한마케터, 오인턴, 신데이터</textarea>
+
+          <div class="preset-row">
+            <button type="button" class="preset-btn" data-preset="coffee">☕ 커피 10인</button>
+            <button type="button" class="preset-btn" data-preset="lunch">🍕 점심 16인</button>
+            <button type="button" class="preset-btn" data-preset="weighted">🎲 가중치(이름*N)</button>
+            <button type="button" class="preset-btn" data-preset="mass">🔥 대규모 28인</button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <span class="field-label">당첨자 결정 방식</span>
+          <div class="rule-selector" role="radiogroup" aria-label="당첨 기준 선택">
+            <button type="button" class="rule-btn active" data-rule="FIRST">
+              🏆 1등 당첨
+            </button>
+            <button type="button" class="rule-btn" data-rule="LAST">
+              💀 꼴찌 당첨
+            </button>
+            <button type="button" class="rule-btn" data-rule="NTH">
+              🎯 N등 지정
+            </button>
+          </div>
+
+          <div id="nth-rank-row" class="nth-row hidden">
+            <label for="nth-rank-input">목표 당첨 순위 (등수):</label>
+            <input id="nth-rank-input" type="number" min="1" max="50" value="3" />
+          </div>
+        </div>
+
+        <div class="form-section course-guide">
+          <span class="field-label">코스 5대 기믹 구성 (140m)</span>
+          <ul class="gimmick-list">
+            <li><span class="zone-dot z1"></span> <strong>Zone 1:</strong> 회전하는 망치 (스위퍼)</li>
+            <li><span class="zone-dot z2"></span> <strong>Zone 2:</strong> 바닥 팝업 범퍼 & 핀볼 기둥</li>
+            <li><span class="zone-dot z3"></span> <strong>Zone 3:</strong> 대형 선풍기 강풍 & 컨베이어</li>
+            <li><span class="zone-dot z4"></span> <strong>Zone 4:</strong> 좁아지는 병목 다리 & 진자 해머</li>
+            <li><span class="zone-dot z5"></span> <strong>Zone 5:</strong> 최종 역전 슬로프 & 슬로우 모션</li>
+          </ul>
+        </div>
+
+        <div class="action-stack">
+          <button id="btn-start-race" class="primary-cta-btn">
+            🏁 레이스 시작 (START)
+          </button>
+          <div class="sub-action-row">
+            <button id="btn-shuffle-racers" class="secondary-btn">
+              🔀 자리 섞기 / 리셋
+            </button>
+          </div>
+        </div>
+      </aside>
+
+      <!-- Right Live Standings & Course Progress Panel -->
+      <aside id="leaderboard-panel" class="hud-panel">
+        <div class="panel-header">
+          <h2>실시간 순위 & 코스 미니맵</h2>
+          <span class="click-hint">클릭 시 개인 카메라 추적</span>
+        </div>
+
+        <!-- Course Minimap Progress Bar -->
+        <div class="course-minimap">
+          <div class="minimap-zones">
+            <span title="Zone 1: 회전 망치">Z1 망치</span>
+            <span title="Zone 2: 팝업 범퍼">Z2 범퍼</span>
+            <span title="Zone 3: 선풍기/벨트">Z3 강풍</span>
+            <span title="Zone 4: 병목 진자">Z4 병목</span>
+            <span title="Zone 5: 결승선">🏁 GOAL</span>
+          </div>
+          <div id="minimap-track" class="minimap-track">
+            <div class="minimap-finish-line"></div>
+            <div id="minimap-dots"></div>
+          </div>
+        </div>
+
+        <div id="leaderboard-list" class="leaderboard-list" role="list"></div>
+      </aside>
+
+      <!-- Center Countdown & Slow-Motion Broadcast Banners -->
+      <div id="countdown-overlay" class="countdown-overlay hidden" aria-live="polite">
+        <span id="countdown-text">3</span>
+      </div>
+
+      <div id="slowmo-banner" class="slowmo-banner hidden">
+        <span class="slowmo-dot"></span>
+        <span>SLOW MOTION · 결승선 클라이맥스 판정 중 (0.22x)</span>
+      </div>
+
+      <!-- Bottom Camera & Playback Controls Dock -->
+      <nav id="camera-dock" class="hud-panel" aria-label="관전 카메라 제어">
+        <div class="dock-section">
+          <span class="dock-label">관전 카메라</span>
+          <div class="cam-btn-group">
+            <button type="button" class="cam-btn active" data-cam="LEAD" id="cam-btn-lead">
+              🎥 선두 그룹 <kbd>1</kbd>
+            </button>
+            <button type="button" class="cam-btn" data-cam="LAST" id="cam-btn-last">
+              🐢 꼴찌 카메라 <kbd>2</kbd>
+            </button>
+            <button type="button" class="cam-btn" data-cam="TOP" id="cam-btn-top">
+              🗺️ 전체 탑뷰 <kbd>3</kbd>
+            </button>
+            <button type="button" class="cam-btn" data-cam="FREE" id="cam-btn-free">
+              🕹️ 자유/개인 포커스 <kbd>4</kbd>
+            </button>
+          </div>
+        </div>
+
+        <div class="dock-divider"></div>
+
+        <div class="dock-section">
+          <button type="button" id="btn-slowmo-toggle" class="cam-btn slowmo-btn">
+            ⏱️ 슬로우 모션 <kbd>Space</kbd>
+          </button>
+        </div>
+      </nav>
+
+      <!-- Winner Celebration & Podium Modal -->
+      <div id="winner-modal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+        <div class="modal-card hud-panel">
+          <div class="modal-badge" id="modal-rule-badge">🏆 최종 당첨자 발표</div>
+          <h2 id="modal-winner-name" class="winner-title">김팀장</h2>
+          <p id="modal-winner-desc" class="winner-subtitle">
+            치열한 장애물과 래그돌 몸싸움을 뚫고 당첨되었습니다!
+          </p>
+
+          <div class="winner-stats-grid">
+            <div class="winner-stat-box">
+              <span class="w-label">최종 순위</span>
+              <strong id="modal-winner-rank">#1위</strong>
+            </div>
+            <div class="winner-stat-box">
+              <span class="w-label">완주 기록</span>
+              <strong id="modal-winner-time">14.2초</strong>
+            </div>
+            <div class="winner-stat-box">
+              <span class="w-label">래그돌 피격 횟수</span>
+              <strong id="modal-winner-ragdolls">💥 4회</strong>
+            </div>
+          </div>
+
+          <div class="modal-rankings-wrap">
+            <h3>전체 순위 결과</h3>
+            <div id="modal-rankings-list" class="modal-rankings-list"></div>
+          </div>
+
+          <div class="modal-actions">
+            <button id="btn-modal-rematch" class="primary-cta-btn">
+              🔄 같은 멤버로 즉시 재경기
+            </button>
+            <button id="btn-modal-close" class="secondary-btn">
+              닫고 관전 계속하기
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
