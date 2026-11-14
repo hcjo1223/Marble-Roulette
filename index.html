@@ -33,6 +33,14 @@
       <!-- Top Center Zone Badge, Timer & Rainbow Progress Bar (IMG_2317 style) -->
       <header id="top-stage-bar">
         <div class="stage-pills-row">
+          <button
+            type="button"
+            class="stage-pill map-switch-pill"
+            id="btn-quick-map-toggle"
+            title="클릭하여 맵 테마 변경 (운동장 ↔ 태권도)"
+          >
+            🗺️ 맵1: 🏫 운동장
+          </button>
           <div class="stage-pill" id="hud-zone-badge">🏠 교실</div>
           <div class="stage-pill timer-pill" id="hud-timer">0.0초</div>
           <div class="stage-pill rule-pill" id="hud-win-rule">🏆 1등 당첨</div>
@@ -84,9 +92,21 @@
         <div class="panel-header">
           <h2>🏃 참가자 및 내기 설정</h2>
           <div class="panel-header-actions">
-            <span id="parsed-count-badge" class="count-badge">12명 준비됨</span>
+            <span id="parsed-count-badge" class="count-badge">16명 준비됨</span>
             <button id="btn-close-setup" class="panel-close-btn" aria-label="설정 닫기">
               ✕
+            </button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <span class="field-label">🗺️ 경주 맵 테마 선택</span>
+          <div class="map-selector" role="radiogroup" aria-label="경주 맵 선택">
+            <button type="button" class="map-btn active" data-map="PLAYGROUND">
+              🏫 맵1: 운동장 경주
+            </button>
+            <button type="button" class="map-btn" data-map="TAEKWONDO">
+              🥋 맵2: 태권도 경주
             </button>
           </div>
         </div>

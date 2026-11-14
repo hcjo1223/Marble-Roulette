@@ -2,7 +2,7 @@ import './style.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import confetti from 'canvas-confetti';
-import type { CameraMode, ParticipantEntry, WinningRule } from './types';
+import type { CameraMode, MapTheme, ParticipantEntry, WinningRule } from './types';
 import { SoundManager } from './audio/SoundManager';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
@@ -47,10 +47,12 @@ class RagdollDerbyGame {
   private sortedRacers: RagdollRacer[] = [];
   private finishedRacers: RagdollRacer[] = [];
 
+  private mapTheme: MapTheme = 'PLAYGROUND';
   private winningRule: WinningRule = 'FIRST';
   private targetRank: number = 1;
 
   private phase: 'READY' | 'COUNTDOWN' | 'RACING' | 'FINISHED' = 'READY';
+  private countdownTimer: number | null = null;
   private raceElapsed: number = 0;
   private manualSlowMo: boolean = false;
   private autoSlowMoTimer: number = 0;
@@ -116,7 +118,7 @@ class RagdollDerbyGame {
     // 3. Physics World & Course
     this.world = new RAPIER.World({ x: 0, y: -26.0, z: 0 });
     this.particles = new ParticleSystem(this.scene);
-    this.course = new ObstacleCourse(this.world, this.scene);
+    this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
     this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
 
@@ -139,6 +141,42 @@ class RagdollDerbyGame {
     });
 
     requestAnimationFrame((now) => this.animate(now));
+  }
+
+  private switchMapTheme(newTheme: MapTheme): void {
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+      document.getElementById('countdown-overlay')!.classList.add('hidden');
+    }
+
+    this.mapTheme = newTheme;
+
+    // Update sky & fog colors for the selected theme
+    if (this.mapTheme === 'TAEKWONDO') {
+      this.scene.background = new THREE.Color('#fde68a');
+      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
+    } else {
+      this.scene.background = new THREE.Color('#cce7ff');
+      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
+    }
+
+    // Update UI buttons
+    document.querySelectorAll<HTMLButtonElement>('.map-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.map === this.mapTheme);
+    });
+
+    const quickMapBtn = document.getElementById('btn-quick-map-toggle');
+    if (quickMapBtn) {
+      quickMapBtn.textContent =
+        this.mapTheme === 'TAEKWONDO' ? '🗺️ 맵2: 🥋 태권도' : '🗺️ 맵1: 🏫 운동장';
+      quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
+    }
+
+    // Rebuild 3D Course and Racers
+    this.course.dispose();
+    this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
+    this.rebuildRacersFromInput();
   }
 
   private handleCanvasTapFocus(clientX: number, clientY: number): void {
@@ -235,7 +273,7 @@ class RagdollDerbyGame {
     this.setSlowMoVisuals(false);
 
     document.getElementById('hud-timer')!.textContent = '0.0초';
-    document.getElementById('hud-zone-badge')!.textContent = '🏠 교실';
+    document.getElementById('hud-zone-badge')!.textContent = this.course.getZoneLabelAtZ(0);
 
     const quickStartBtn = document.getElementById('btn-quick-start');
     if (quickStartBtn) quickStartBtn.textContent = '🏁 시작';
@@ -258,7 +296,8 @@ class RagdollDerbyGame {
         idx,
         new THREE.Vector3(x, y, z),
         this.world,
-        this.scene
+        this.scene,
+        this.mapTheme
       );
       this.racers.push(racer);
     });
@@ -291,6 +330,11 @@ class RagdollDerbyGame {
   }
 
   private startRaceCountdown(): void {
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+    }
+
     this.rebuildRacersFromInput();
     this.phase = 'COUNTDOWN';
 
@@ -309,7 +353,7 @@ class RagdollDerbyGame {
     textEl.textContent = '3';
     this.sound.playCountdownBeep(false);
 
-    const timer = window.setInterval(() => {
+    this.countdownTimer = window.setInterval(() => {
       step--;
       if (step > 0) {
         textEl.textContent = String(step);
@@ -324,7 +368,10 @@ class RagdollDerbyGame {
           r.state = 'RUNNING';
         }
       } else {
-        clearInterval(timer);
+        if (this.countdownTimer !== null) {
+          clearInterval(this.countdownTimer);
+          this.countdownTimer = null;
+        }
         overlay.classList.add('hidden');
       }
     }, 620);
@@ -391,6 +438,20 @@ class RagdollDerbyGame {
 
     document.getElementById('btn-quick-start')!.addEventListener('click', () => {
       this.startRaceCountdown();
+    });
+
+    document.getElementById('btn-quick-map-toggle')!.addEventListener('click', () => {
+      const nextTheme: MapTheme = this.mapTheme === 'PLAYGROUND' ? 'TAEKWONDO' : 'PLAYGROUND';
+      this.switchMapTheme(nextTheme);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.map-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const theme = btn.dataset.map as MapTheme;
+        if (theme && theme !== this.mapTheme) {
+          this.switchMapTheme(theme);
+        }
+      });
     });
 
     const textarea = document.getElementById('participants-input') as HTMLTextAreaElement;

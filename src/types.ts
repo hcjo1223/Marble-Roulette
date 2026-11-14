@@ -2,6 +2,8 @@ export type CameraMode = 'LEAD' | 'LAST' | 'TOP' | 'FREE';
 
 export type WinningRule = 'FIRST' | 'LAST' | 'NTH';
 
+export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO';
+
 export type RacerState = 'WAITING' | 'RUNNING' | 'RAGDOLL' | 'RECOVERING' | 'FINISHED';
 
 export interface ParticipantEntry {

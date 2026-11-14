@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
+import type { MapTheme } from '../types';
 import {
   GROUP_ENV,
   GROUP_LIMB,
@@ -88,7 +89,9 @@ interface PendulumData {
 export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
+  public readonly mapTheme: MapTheme;
   private courseGroup: THREE.Group;
+  private bodies: RAPIER.RigidBody[] = [];
 
   private startGateBody!: RAPIER.RigidBody;
   private startGateMesh!: THREE.Mesh;
@@ -105,28 +108,45 @@ export class ObstacleCourse {
 
   private elapsedTime: number = 0;
 
-  constructor(world: RAPIER.World, scene: THREE.Scene) {
+  constructor(world: RAPIER.World, scene: THREE.Scene, mapTheme: MapTheme = 'PLAYGROUND') {
     this.world = world;
     this.scene = scene;
+    this.mapTheme = mapTheme;
     this.courseGroup = new THREE.Group();
     this.scene.add(this.courseGroup);
 
     this.buildCurvedTrackAndScenery();
     this.buildStartGate();
-    this.buildZone1ClassroomObstacles();
+    this.buildZone1Obstacles();
     this.buildZone2MysteryDoorsAndBumpers();
     this.buildZone3WindAndConveyors();
-    this.buildZone4PlaygroundBottleneck();
+    this.buildZone4Bottleneck();
     this.buildZone5FinishArch();
   }
 
+  private createBody(desc: RAPIER.RigidBodyDesc): RAPIER.RigidBody {
+    const body = this.world.createRigidBody(desc);
+    this.bodies.push(body);
+    return body;
+  }
+
+  public dispose(): void {
+    for (const body of this.bodies) {
+      if (this.world.bodies.contains(body.handle)) {
+        this.world.removeRigidBody(body);
+      }
+    }
+    this.bodies = [];
+    this.scene.remove(this.courseGroup);
+  }
+
   public getTrackCenterX(z: number): number {
-    // Smooth C1-continuous S-curve starting gently after the starting grid
-    if (z <= 6) return 0;
-    const s = z - 6;
-    const ease = Math.min(1, s / 16);
+    // Keep starting grid & initial sprint (z <= 14) 100% straight so racers never snag at start
+    if (z <= 14) return 0;
+    const s = z - 14;
+    const ease = Math.min(1, s / 18);
     const smoothEase = ease * ease * (3 - 2 * ease);
-    return smoothEase * (Math.sin(s * 0.036) * 8.5 - Math.sin(s * 0.014) * 2.2);
+    return smoothEase * (Math.sin(s * 0.036) * 8.2 - Math.sin(s * 0.014) * 2.0);
   }
 
   public getTrackYawAtZ(z: number): number {
@@ -156,6 +176,13 @@ export class ObstacleCourse {
   }
 
   public getZoneLabelAtZ(z: number): string {
+    if (this.mapTheme === 'TAEKWONDO') {
+      if (z < 42) return '🥋 태권도장';
+      if (z < 72) return '🪵 송판 격파';
+      if (z < 100) return '🌪️ 장풍 수련';
+      if (z < FINISH_Z) return '⚔️ 대련장';
+      return '🏆 승단 심사';
+    }
     if (z < 42) return '🏠 교실';
     if (z < 72) return '❓ 복도 관문';
     if (z < 100) return '💨 강풍 통로';
@@ -173,7 +200,6 @@ export class ObstacleCourse {
     canvas.height = 256;
     const ctx = canvas.getContext('2d')!;
 
-    // Warm sunny honey-wood classroom planks
     ctx.fillStyle = '#facc6b';
     ctx.fillRect(0, 0, 256, 256);
 
@@ -189,7 +215,6 @@ export class ObstacleCourse {
       ctx.stroke();
     }
 
-    // Subtle horizontal plank joints
     ctx.strokeStyle = 'rgba(180, 83, 9, 0.35)';
     ctx.lineWidth = 2;
     for (let y = 0; y < 256; y += 64) {
@@ -203,6 +228,34 @@ export class ObstacleCourse {
     tex.wrapS = THREE.RepeatWrapping;
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(2, 1);
+    return tex;
+  }
+
+  private createTaekwondoMatTexture(c1: string, c2: string): THREE.CanvasTexture {
+    const canvas = document.createElement('canvas');
+    canvas.width = 256;
+    canvas.height = 256;
+    const ctx = canvas.getContext('2d')!;
+
+    // Classic Blue & Red interlocking Taekwondojang EVA puzzle mat
+    ctx.fillStyle = c1;
+    ctx.fillRect(0, 0, 256, 256);
+    ctx.fillStyle = c2;
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.fillRect(128, 128, 128, 128);
+
+    // Subtle puzzle seam lines
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(4, 4, 120, 120);
+    ctx.strokeRect(132, 4, 120, 120);
+    ctx.strokeRect(4, 132, 120, 120);
+    ctx.strokeRect(132, 132, 120, 120);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(3, 1);
     return tex;
   }
 
@@ -227,11 +280,9 @@ export class ObstacleCourse {
     canvas.width = 256;
     canvas.height = 256;
     const ctx = canvas.getContext('2d')!;
-    // Red-orange school playground track
     ctx.fillStyle = '#ea580c';
     ctx.fillRect(0, 0, 256, 256);
 
-    // White track lanes
     ctx.fillStyle = '#fff7ed';
     for (let i = 1; i < 6; i++) {
       ctx.fillRect((256 / 6) * i - 2, 0, 4, 256);
@@ -262,38 +313,51 @@ export class ObstacleCourse {
 
   private buildCurvedTrackAndScenery(): void {
     const envGroup = this.envCollisionGroup();
+    const isTkd = this.mapTheme === 'TAEKWONDO';
 
-    const woodMat = new THREE.MeshStandardMaterial({
-      map: this.createWoodFloorTexture(),
-      roughness: 0.6,
+    const zone1Mat = new THREE.MeshStandardMaterial({
+      map: isTkd
+        ? this.createTaekwondoMatTexture('#2563eb', '#dc2626')
+        : this.createWoodFloorTexture(),
+      roughness: 0.58,
       metalness: 0.05,
     });
-    const hallwayMat = new THREE.MeshStandardMaterial({
-      map: this.createPastelTileTexture('#bae6fd', '#e0f2fe'),
+    const zone2Mat = new THREE.MeshStandardMaterial({
+      map: isTkd
+        ? this.createWoodFloorTexture()
+        : this.createPastelTileTexture('#bae6fd', '#e0f2fe'),
       roughness: 0.5,
       metalness: 0.05,
     });
-    const windZoneMat = new THREE.MeshStandardMaterial({
-      map: this.createPastelTileTexture('#a5f3fc', '#cffafe'),
+    const zone3Mat = new THREE.MeshStandardMaterial({
+      map: isTkd
+        ? this.createTaekwondoMatTexture('#1d4ed8', '#f59e0b')
+        : this.createPastelTileTexture('#a5f3fc', '#cffafe'),
       roughness: 0.45,
       metalness: 0.05,
     });
-    const playgroundMat = new THREE.MeshStandardMaterial({
-      map: this.createAthleticTrackTexture(),
-      roughness: 0.72,
+    const zone4Mat = new THREE.MeshStandardMaterial({
+      map: isTkd
+        ? this.createTaekwondoMatTexture('#b91c1c', '#1e40af')
+        : this.createAthleticTrackTexture(),
+      roughness: 0.68,
       metalness: 0.02,
     });
 
-    const creamWallMat = new THREE.MeshStandardMaterial({
-      color: 0xf8fafc,
+    const wallMat = new THREE.MeshStandardMaterial({
+      color: isTkd ? 0xfef3c7 : 0xf8fafc,
       roughness: 0.65,
     });
     const wallCapMat = new THREE.MeshStandardMaterial({
-      color: 0xfbbf24,
+      color: isTkd ? 0x92400e : 0xfbbf24,
       roughness: 0.4,
     });
 
-    // Build curved track in overlapping 4m slices from Z = -4 to 148
+    // Pure X-slope quaternion (zero Y-yaw!) for floor slabs so ALL floor pieces lie on the EXACT same mathematical plane with zero vertical step!
+    const coplanarFloorQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(TRACK_SLOPE, 0, 0)
+    );
+
     const stepZ = 4.0;
     for (let z0 = -4; z0 < 146; z0 += stepZ) {
       const z1 = z0 + stepZ;
@@ -306,42 +370,49 @@ export class ObstacleCourse {
       const dx = x1 - x0;
       const dz = z1 - z0;
       const yaw = Math.atan2(dx, dz);
-      const segLen = Math.hypot(dx, dz) / Math.cos(TRACK_SLOPE) + 0.65;
+      const wallSegLen = Math.hypot(dx, dz) / Math.cos(TRACK_SLOPE) + 0.95;
+      const floorSegLen = dz / Math.cos(TRACK_SLOPE) + 0.4;
       const halfW = this.getTrackHalfWidthAtZ(zMid);
-      const width = halfW * 2;
+      // Widen floor slab slightly by |dx| so curved walls are 100% supported without rotating the floor around Y
+      const floorHalfW = halfW + Math.abs(dx) * 0.6 + 0.45;
 
-      const quat = new THREE.Quaternion().setFromEuler(
+      const wallQuat = new THREE.Quaternion().setFromEuler(
         new THREE.Euler(TRACK_SLOPE, yaw, 0, 'YXZ')
       );
 
-      let floorMat = woodMat;
-      if (zMid >= 42 && zMid < 72) floorMat = hallwayMat;
-      else if (zMid >= 72 && zMid < 100) floorMat = windZoneMat;
-      else if (zMid >= 100) floorMat = playgroundMat;
+      let floorMat = zone1Mat;
+      if (zMid >= 42 && zMid < 72) floorMat = zone2Mat;
+      else if (zMid >= 72 && zMid < 100) floorMat = zone3Mat;
+      else if (zMid >= 100) floorMat = zone4Mat;
 
       const floorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(width, 1.2, segLen),
+        new THREE.BoxGeometry(floorHalfW * 2, 1.2, floorSegLen),
         floorMat
       );
       floorMesh.position.set(xMid, yMid - 0.6, zMid);
-      floorMesh.quaternion.copy(quat);
+      floorMesh.quaternion.copy(coplanarFloorQuat);
       floorMesh.receiveShadow = true;
       this.courseGroup.add(floorMesh);
 
-      const floorBody = this.world.createRigidBody(
+      const floorBody = this.createBody(
         RAPIER.RigidBodyDesc.fixed()
           .setTranslation(xMid, yMid - 0.6, zMid)
-          .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
+          .setRotation({
+            x: coplanarFloorQuat.x,
+            y: coplanarFloorQuat.y,
+            z: coplanarFloorQuat.z,
+            w: coplanarFloorQuat.w,
+          })
       );
       this.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(halfW, 0.6, segLen * 0.5)
-          .setFriction(0.14)
-          .setRestitution(0.2)
+        RAPIER.ColliderDesc.cuboid(floorHalfW, 0.6, floorSegLen * 0.5)
+          .setFriction(0.12)
+          .setRestitution(0.15)
           .setCollisionGroups(envGroup),
         floorBody
       );
 
-      // Side walls (tall cream classroom walls in Zone 1-3, low guardrails in playground)
+      // Side walls
       const isBridge = zMid >= 103 && zMid <= 123;
       const wallHeight = zMid < 72 ? 3.2 : isBridge ? 0.9 : 1.7;
       const rightX = Math.cos(yaw);
@@ -353,57 +424,69 @@ export class ObstacleCourse {
         const wy = yMid + wallHeight * 0.5;
 
         const wallMesh = new THREE.Mesh(
-          new THREE.BoxGeometry(0.7, wallHeight, segLen),
-          creamWallMat
+          new THREE.BoxGeometry(0.7, wallHeight, wallSegLen),
+          wallMat
         );
         wallMesh.position.set(wx, wy, wz);
-        wallMesh.quaternion.copy(quat);
+        wallMesh.quaternion.copy(wallQuat);
         wallMesh.castShadow = true;
         wallMesh.receiveShadow = true;
         this.courseGroup.add(wallMesh);
 
         if (!isBridge) {
           const cap = new THREE.Mesh(
-            new THREE.BoxGeometry(0.78, 0.22, segLen),
-            zMid >= 100 ? new THREE.MeshStandardMaterial({ color: 0x22c55e }) : wallCapMat
+            new THREE.BoxGeometry(0.78, 0.22, wallSegLen),
+            zMid >= 100
+              ? new THREE.MeshStandardMaterial({ color: isTkd ? 0xdc2626 : 0x22c55e })
+              : wallCapMat
           );
           cap.position.set(wx, yMid + wallHeight + 0.1, wz);
-          cap.quaternion.copy(quat);
+          cap.quaternion.copy(wallQuat);
           this.courseGroup.add(cap);
         }
 
-        const wallBody = this.world.createRigidBody(
+        const wallBody = this.createBody(
           RAPIER.RigidBodyDesc.fixed()
             .setTranslation(wx, wy, wz)
-            .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
+            .setRotation({ x: wallQuat.x, y: wallQuat.y, z: wallQuat.z, w: wallQuat.w })
         );
         this.world.createCollider(
-          RAPIER.ColliderDesc.cuboid(0.38, wallHeight * 0.5 + 0.2, segLen * 0.5)
-            .setFriction(0.05)
-            .setRestitution(0.45)
+          RAPIER.ColliderDesc.cuboid(0.38, wallHeight * 0.5 + 0.2, wallSegLen * 0.5)
+            .setFriction(0.0)
+            .setRestitution(0.4)
             .setCollisionGroups(envGroup),
           wallBody
         );
       }
 
-      // Classroom decorations: Green Chalkboards & Sky Windows along Zone 1 walls!
+      // Zone 1 Wall Decorations
       if (zMid >= 10 && zMid <= 40 && Math.round(z0) % 12 === 0) {
         for (const side of [-1, 1]) {
           const decoX = xMid + side * rightX * (halfW - 0.05);
           const decoZ = zMid + side * rightZ * (halfW - 0.05);
           const decoY = yMid + 2.0;
 
-          if (side === -1) {
-            // Green chalkboard with wooden frame
+          if (isTkd) {
+            // Taekwondo Dojo Banner ("태권도 · 백절불굴") or Hanji Lattice Window
+            const board = new THREE.Mesh(
+              new THREE.BoxGeometry(0.18, 1.5, 4.2),
+              new THREE.MeshStandardMaterial({
+                color: side === -1 ? 0x1e3a8a : 0x991b1b,
+                roughness: 0.5,
+              })
+            );
+            board.position.set(decoX, decoY, decoZ);
+            board.quaternion.copy(wallQuat);
+            this.courseGroup.add(board);
+          } else if (side === -1) {
             const board = new THREE.Mesh(
               new THREE.BoxGeometry(0.18, 1.5, 4.4),
               new THREE.MeshStandardMaterial({ color: 0x166534, roughness: 0.7 })
             );
             board.position.set(decoX, decoY, decoZ);
-            board.quaternion.copy(quat);
+            board.quaternion.copy(wallQuat);
             this.courseGroup.add(board);
           } else {
-            // Bright blue classroom window
             const win = new THREE.Mesh(
               new THREE.BoxGeometry(0.18, 1.4, 3.4),
               new THREE.MeshStandardMaterial({
@@ -413,7 +496,7 @@ export class ObstacleCourse {
               })
             );
             win.position.set(decoX, decoY, decoZ);
-            win.quaternion.copy(quat);
+            win.quaternion.copy(wallQuat);
             this.courseGroup.add(win);
           }
         }
@@ -421,7 +504,7 @@ export class ObstacleCourse {
     }
 
     // Back wall behind starting area
-    const backBody = this.world.createRigidBody(
+    const backBody = this.createBody(
       RAPIER.RigidBodyDesc.fixed().setTranslation(0, this.getTrackHeightAtZ(-3.5) + 2, -3.5)
     );
     this.world.createCollider(
@@ -429,18 +512,24 @@ export class ObstacleCourse {
       backBody
     );
 
-    // Sunny Green Playground Grass & Trees flanking Zone 4-5 (Z: 95..148)
-    const grassMesh = new THREE.Mesh(
+    // Surrounding ground & trees flanking Zone 4-5 (Z: 95..148)
+    const groundMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(110, 80),
-      new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.9 })
+      new THREE.MeshStandardMaterial({
+        color: isTkd ? 0xfde68a : 0x4ade80,
+        roughness: 0.9,
+      })
     );
-    grassMesh.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
-    grassMesh.position.set(this.getTrackCenterX(120), this.getTrackHeightAtZ(120) - 1.5, 122);
-    grassMesh.receiveShadow = true;
-    this.courseGroup.add(grassMesh);
+    groundMesh.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
+    groundMesh.position.set(this.getTrackCenterX(120), this.getTrackHeightAtZ(120) - 1.5, 122);
+    groundMesh.receiveShadow = true;
+    this.courseGroup.add(groundMesh);
 
-    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.8 });
-    const leafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.65 });
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: isTkd ? 0x15803d : 0x22c55e,
+      roughness: 0.65,
+    });
     for (let tz = 96; tz <= 144; tz += 9) {
       const cx = this.getTrackCenterX(tz);
       const ty = this.getTrackHeightAtZ(tz) - 1.2;
@@ -458,11 +547,18 @@ export class ObstacleCourse {
       }
     }
 
-    // Overhead Zone Arch Signs (like the [운동장] green sign in IMG_2317.jpeg!)
-    this.addArchSign(11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
-    this.addArchSign(43, '❓ 미스터리 관문', '#0284c7', '#e0f2fe', '#075985');
-    this.addArchSign(72, '💨 강풍 & 컨베이어', '#0891b2', '#cffafe', '#155e75');
-    this.addArchSign(103, '🏃 운동장', '#16a34a', '#dcfce7', '#14532d');
+    // Overhead Zone Arch Signs
+    if (isTkd) {
+      this.addArchSign(11, '🥋 태권도장 수련 시작!', '#dc2626', '#fef2f2', '#991b1b');
+      this.addArchSign(43, '🪵 송판 격파 관문', '#d97706', '#fef3c7', '#92400e');
+      this.addArchSign(72, '🌪️ 장풍 & 스텝 수련', '#2563eb', '#dbeafe', '#1e3a8a');
+      this.addArchSign(103, '⚔️ 챔피언 대련장', '#1e293b', '#f8fafc', '#0f172a');
+    } else {
+      this.addArchSign(11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
+      this.addArchSign(43, '❓ 미스터리 관문', '#0284c7', '#e0f2fe', '#075985');
+      this.addArchSign(72, '💨 강풍 & 컨베이어', '#0891b2', '#cffafe', '#155e75');
+      this.addArchSign(103, '🏃 운동장', '#16a34a', '#dcfce7', '#14532d');
+    }
   }
 
   private addArchSign(
@@ -481,7 +577,8 @@ export class ObstacleCourse {
     group.position.set(cx, y, z);
     group.rotation.y = yaw;
 
-    const pillarMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.4 });
+    const pillarColor = this.mapTheme === 'TAEKWONDO' ? 0xb91c1c : 0x16a34a;
+    const pillarMat = new THREE.MeshStandardMaterial({ color: pillarColor, roughness: 0.4 });
     for (const side of [-1, 1]) {
       const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 6.8, 12), pillarMat);
       pillar.position.set(side * (halfW + 0.1), 3.4, 0);
@@ -501,7 +598,7 @@ export class ObstacleCourse {
     ctx.stroke();
 
     ctx.fillStyle = textHex;
-    ctx.font = '800 38px "Plus Jakarta Sans", sans-serif';
+    ctx.font = '800 36px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(title, 256, 49);
@@ -520,7 +617,13 @@ export class ObstacleCourse {
     const z = 8.5;
     const cx = this.getTrackCenterX(z);
     const y = this.getTrackHeightAtZ(z);
-    const gateTex = this.createCheckeredTexture('#fbbf24', '#ffffff', 12, 2);
+    const isTkd = this.mapTheme === 'TAEKWONDO';
+    const gateTex = this.createCheckeredTexture(
+      isTkd ? '#dc2626' : '#fbbf24',
+      isTkd ? '#2563eb' : '#ffffff',
+      12,
+      2
+    );
 
     this.startGateMesh = new THREE.Mesh(
       new THREE.BoxGeometry(17.8, 2.5, 0.5),
@@ -530,7 +633,7 @@ export class ObstacleCourse {
     this.startGateMesh.castShadow = true;
     this.courseGroup.add(this.startGateMesh);
 
-    this.startGateBody = this.world.createRigidBody(
+    this.startGateBody = this.createBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(cx, y + 1.25, z)
     );
     this.world.createCollider(
@@ -543,11 +646,10 @@ export class ObstacleCourse {
     this.gateOpen = true;
   }
 
-  private buildZone1ClassroomObstacles(): void {
-    // 1. Cute School Desks scattered along Zone 1 (like IMG_2317.jpeg!)
-    const deskPositions = [
-      { z: 15, offset: -5.2 },
-      { z: 17, offset: 4.5 },
+  private buildZone1Obstacles(): void {
+    const obstaclePositions = [
+      { z: 16, offset: -5.2 },
+      { z: 18, offset: 4.5 },
       { z: 22, offset: -1.5 },
       { z: 24, offset: 5.5 },
       { z: 29, offset: -5.8 },
@@ -556,11 +658,69 @@ export class ObstacleCourse {
       { z: 37, offset: 4.8 },
     ];
 
-    const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.55 });
-    const legMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 });
     const envGroup = this.envCollisionGroup();
 
-    for (const dp of deskPositions) {
+    if (this.mapTheme === 'TAEKWONDO') {
+      // Standing Taekwondo Kicking Dummy Bags (Red & Blue 샌드백 미트)
+      const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+      const redBagMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
+      const blueBagMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35 });
+      const targetBandMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.3 });
+
+      obstaclePositions.forEach((dp, idx) => {
+        const cx = this.getTrackCenterX(dp.z);
+        const yaw = this.getTrackYawAtZ(dp.z);
+        const wx = cx + Math.cos(yaw) * dp.offset;
+        const wz = dp.z - Math.sin(yaw) * dp.offset;
+        const wy = this.getTrackHeightAtZ(dp.z);
+
+        const bagGroup = new THREE.Group();
+        bagGroup.position.set(wx, wy, wz);
+
+        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.45, 16), baseMat);
+        base.position.y = 0.22;
+        bagGroup.add(base);
+
+        const pad = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.56, 0.56, 1.9, 18),
+          idx % 2 === 0 ? redBagMat : blueBagMat
+        );
+        pad.position.y = 1.35;
+        pad.castShadow = true;
+        bagGroup.add(pad);
+
+        const strikeRing = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.58, 0.58, 0.26, 18),
+          targetBandMat
+        );
+        strikeRing.position.y = 1.5;
+        bagGroup.add(strikeRing);
+
+        this.courseGroup.add(bagGroup);
+
+        const body = this.createBody(
+          RAPIER.RigidBodyDesc.fixed().setTranslation(wx, wy + 1.1, wz)
+        );
+        this.world.createCollider(
+          RAPIER.ColliderDesc.cylinder(1.1, 0.65)
+            .setRestitution(0.95)
+            .setCollisionGroups(envGroup),
+          body
+        );
+      });
+
+      // Martial Arts Spinning Sparring Bars (Black-belt & Red/Blue)
+      this.createSweeper(20, -2.5, 4.6, 3.5, 3, 0x1e293b);
+      this.createSweeper(28, 2.6, 4.8, -3.8, 2, 0xdc2626);
+      this.createSweeper(35, 0, 5.8, 4.0, 3, 0x2563eb);
+      return;
+    }
+
+    // PLAYGROUND: Cute School Desks
+    const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.55 });
+    const legMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 });
+
+    for (const dp of obstaclePositions) {
       const cx = this.getTrackCenterX(dp.z);
       const yaw = this.getTrackYawAtZ(dp.z);
       const rightX = Math.cos(yaw);
@@ -588,7 +748,7 @@ export class ObstacleCourse {
       }
       this.courseGroup.add(deskGroup);
 
-      const body = this.world.createRigidBody(
+      const body = this.createBody(
         RAPIER.RigidBodyDesc.fixed().setTranslation(wx, wy + 0.55, wz)
       );
       this.world.createCollider(
@@ -599,7 +759,6 @@ export class ObstacleCourse {
       );
     }
 
-    // 2. Bright Blue 3-Blade Sweeper & Red-Yellow Sweepers in Zone 1
     this.createSweeper(20, -2.5, 4.6, 3.3, 3, 0x2563eb);
     this.createSweeper(28, 2.6, 4.8, -3.6, 2, 0xf43f5e);
     this.createSweeper(35, 0, 5.8, 3.8, 3, 0x0ea5e9);
@@ -658,10 +817,9 @@ export class ObstacleCourse {
 
     this.courseGroup.add(group);
 
-    const body = this.world.createRigidBody(
+    const body = this.createBody(
       RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(center.x, center.y, center.z)
     );
-    // Attach kinematic colliders for each blade
     for (let b = 0; b < blades; b++) {
       const a = (b * Math.PI * 2) / blades;
       const midDist = armLength * 0.5;
@@ -686,8 +844,10 @@ export class ObstacleCourse {
   }
 
   private buildZone2MysteryDoorsAndBumpers(): void {
-    // 1. Mystery [?] Doors Wall across the track at Z = 48 (just like IMG_2317.jpeg!)
+    // 1. Mystery [?] Doors OR Pinewood Breaking Boards (송판 격파) at Z = 48
     this.buildMysteryDoorRow(48, 5);
+
+    const isTkd = this.mapTheme === 'TAEKWONDO';
 
     // 2. Floor Pop-up Spring Bumpers & Pinball Pillars (Z = 54 .. 70)
     const popupSpecs = [
@@ -709,7 +869,10 @@ export class ObstacleCourse {
 
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius * 0.9, 1.4, 20),
-        new THREE.MeshStandardMaterial({ color: 0x10b981, roughness: 0.25 })
+        new THREE.MeshStandardMaterial({
+          color: isTkd ? 0x2563eb : 0x10b981,
+          roughness: 0.25,
+        })
       );
       mesh.position.set(basePos.x, basePos.y - 0.5, basePos.z);
       mesh.castShadow = true;
@@ -724,7 +887,7 @@ export class ObstacleCourse {
       ring.position.set(basePos.x, basePos.y + 0.08, basePos.z);
       this.courseGroup.add(ring);
 
-      const body = this.world.createRigidBody(
+      const body = this.createBody(
         RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
           basePos.x,
           basePos.y - 0.5,
@@ -749,7 +912,6 @@ export class ObstacleCourse {
       });
     }
 
-    // Pinball Pillars
     const pinballSpecs = [
       { z: 57, offset: -4.8 },
       { z: 57, offset: 4.8 },
@@ -770,7 +932,10 @@ export class ObstacleCourse {
       group.position.copy(pos);
       const core = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius * 0.85, 2.2, 20),
-        new THREE.MeshStandardMaterial({ color: 0xec4899, roughness: 0.25 })
+        new THREE.MeshStandardMaterial({
+          color: isTkd ? 0xdc2626 : 0xec4899,
+          roughness: 0.25,
+        })
       );
       core.castShadow = true;
       const band = new THREE.Mesh(
@@ -780,7 +945,7 @@ export class ObstacleCourse {
       group.add(core, band);
       this.courseGroup.add(group);
 
-      const body = this.world.createRigidBody(
+      const body = this.createBody(
         RAPIER.RigidBodyDesc.fixed().setTranslation(pos.x, pos.y, pos.z)
       );
       this.world.createCollider(
@@ -808,6 +973,7 @@ export class ObstacleCourse {
     const totalW = halfW * 2;
     const slotW = totalW / doorCount;
     const doorW = slotW - 0.55;
+    const isTkd = this.mapTheme === 'TAEKWONDO';
 
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
@@ -815,30 +981,58 @@ export class ObstacleCourse {
     // Frame header beam above doors
     const headerMesh = new THREE.Mesh(
       new THREE.BoxGeometry(totalW + 0.6, 0.9, 0.8),
-      new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.5 })
+      new THREE.MeshStandardMaterial({
+        color: isTkd ? 0x78350f : 0xd97706,
+        roughness: 0.5,
+      })
     );
     headerMesh.position.set(cx, y + 3.7, z);
     headerMesh.rotation.y = yaw;
     this.courseGroup.add(headerMesh);
 
-    // Question mark texture for doors
     const canvas = document.createElement('canvas');
     canvas.width = 128;
     canvas.height = 192;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = '#92400e';
-    ctx.fillRect(0, 0, 128, 192);
-    ctx.strokeStyle = '#fde68a';
-    ctx.lineWidth = 8;
-    ctx.strokeRect(8, 8, 112, 176);
-    ctx.fillStyle = '#fef3c7';
-    ctx.font = '800 84px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText('?', 64, 96);
+
+    if (isTkd) {
+      // Taekwondo Pinewood Breaking Board (송판 격파!)
+      ctx.fillStyle = '#fde68a';
+      ctx.fillRect(0, 0, 128, 192);
+      ctx.strokeStyle = '#d97706';
+      ctx.lineWidth = 6;
+      ctx.strokeRect(6, 6, 116, 180);
+      // Wood grain lines
+      ctx.strokeStyle = 'rgba(180, 83, 9, 0.25)';
+      ctx.lineWidth = 3;
+      for (let gx = 20; gx < 120; gx += 22) {
+        ctx.beginPath();
+        ctx.moveTo(gx, 8);
+        ctx.lineTo(gx, 184);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#991b1b';
+      ctx.font = '900 44px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('격파', 64, 78);
+      ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#1e293b';
+      ctx.fillText('擊破', 64, 126);
+    } else {
+      ctx.fillStyle = '#92400e';
+      ctx.fillRect(0, 0, 128, 192);
+      ctx.strokeStyle = '#fde68a';
+      ctx.lineWidth = 8;
+      ctx.strokeRect(8, 8, 112, 176);
+      ctx.fillStyle = '#fef3c7';
+      ctx.font = '800 84px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('?', 64, 96);
+    }
     const doorTex = new THREE.CanvasTexture(canvas);
 
-    // Guarantee at least 2 passable doors
     const passableFlags = Array.from({ length: doorCount }, (_, i) => i < 3);
     for (let i = passableFlags.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -855,21 +1049,20 @@ export class ObstacleCourse {
       pivotGroup.rotation.y = yaw;
 
       const doorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(doorW, 3.3, 0.42),
+        new THREE.BoxGeometry(doorW, 3.3, isTkd ? 0.32 : 0.42),
         new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.45 })
       );
       doorMesh.castShadow = true;
       pivotGroup.add(doorMesh);
       this.courseGroup.add(pivotGroup);
 
-      // Pillar divider between doors
       if (i < doorCount - 1) {
         const divOffset = -halfW + slotW * (i + 1);
         const px = cx + rightX * divOffset;
         const pz = z + rightZ * divOffset;
         const pillar = new THREE.Mesh(
           new THREE.BoxGeometry(0.5, 3.8, 0.7),
-          new THREE.MeshStandardMaterial({ color: 0xb45309 })
+          new THREE.MeshStandardMaterial({ color: isTkd ? 0x1e293b : 0xb45309 })
         );
         pillar.position.set(px, y + 1.9, pz);
         pillar.rotation.y = yaw;
@@ -877,7 +1070,7 @@ export class ObstacleCourse {
       }
 
       const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
-      const body = this.world.createRigidBody(
+      const body = this.createBody(
         RAPIER.RigidBodyDesc.kinematicPositionBased()
           .setTranslation(dx, y + 1.65, dz)
           .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
@@ -904,7 +1097,6 @@ export class ObstacleCourse {
   }
 
   private buildZone3WindAndConveyors(): void {
-    // 1. Conveyor Belts (Z = 75..96)
     const beltSpecs = [
       { zMin: 75, zMax: 86, sideOffsetMin: -8.0, sideOffsetMax: -2.6, speedZ: 13.5, isBoost: true },
       { zMin: 75, zMax: 86, sideOffsetMin: -2.2, sideOffsetMax: 2.2, speedZ: -9.0, isBoost: false },
@@ -949,12 +1141,13 @@ export class ObstacleCourse {
       });
     }
 
-    // 2. Giant Bright Blue 3-Blade Wind Fans (resembling IMG_2317.jpeg!)
     const fanConfigs = [
       { zMin: 75, zMax: 82, side: -1, dirX: 1, force: 34 },
       { zMin: 82.5, zMax: 89.5, side: 1, dirX: -1, force: 35 },
       { zMin: 90, zMax: 97, side: -1, dirX: 1, force: 34 },
     ];
+
+    const isTkd = this.mapTheme === 'TAEKWONDO';
 
     for (const fc of fanConfigs) {
       const zMid = (fc.zMin + fc.zMax) * 0.5;
@@ -966,7 +1159,10 @@ export class ObstacleCourse {
 
       const housing = new THREE.Mesh(
         new THREE.CylinderGeometry(2.3, 2.3, 1.2, 24),
-        new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25 })
+        new THREE.MeshStandardMaterial({
+          color: isTkd ? 0xb91c1c : 0x0284c7,
+          roughness: 0.25,
+        })
       );
       housing.rotation.z = Math.PI / 2;
       housing.position.set(xHousing, yMid, zHousing);
@@ -974,7 +1170,10 @@ export class ObstacleCourse {
 
       const bladesGroup = new THREE.Group();
       bladesGroup.position.set(xHousing - fc.side * 0.55, yMid, zHousing);
-      const bladeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+      const bladeMat = new THREE.MeshStandardMaterial({
+        color: isTkd ? 0xfacc15 : 0xffffff,
+        roughness: 0.2,
+      });
       for (let b = 0; b < 3; b++) {
         const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.6, 0.72), bladeMat);
         blade.rotation.x = (b * Math.PI) / 3;
@@ -982,7 +1181,6 @@ export class ObstacleCourse {
       }
       this.courseGroup.add(bladesGroup);
 
-      // Visible wind stream dots
       const pCount = 45;
       const positions = new Float32Array(pCount * 3);
       for (let i = 0; i < pCount; i++) {
@@ -1040,12 +1238,13 @@ export class ObstacleCourse {
     return tex;
   }
 
-  private buildZone4PlaygroundBottleneck(): void {
+  private buildZone4Bottleneck(): void {
     const pConfigs = [
       { z: 108, freq: 2.35, phase: 0, maxAngle: 0.92 },
       { z: 115, freq: 2.6, phase: Math.PI, maxAngle: 0.92 },
       { z: 121, freq: 2.8, phase: Math.PI * 0.5, maxAngle: 0.92 },
     ];
+    const isTkd = this.mapTheme === 'TAEKWONDO';
 
     for (const pc of pConfigs) {
       const cx = this.getTrackCenterX(pc.z);
@@ -1057,7 +1256,10 @@ export class ObstacleCourse {
       const frameGroup = new THREE.Group();
       frameGroup.position.set(cx, floorY, pc.z);
       frameGroup.rotation.y = yaw;
-      const frameMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+      const frameMat = new THREE.MeshStandardMaterial({
+        color: isTkd ? 0x1e293b : 0xf8fafc,
+        roughness: 0.4,
+      });
       for (const side of [-1, 1]) {
         const leg = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.28, 7.6, 12), frameMat);
         leg.position.set(side * 4.9, 3.8, 0);
@@ -1081,7 +1283,10 @@ export class ObstacleCourse {
 
       const hammerMesh = new THREE.Mesh(
         new THREE.CylinderGeometry(1.05, 1.05, 2.2, 20),
-        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.25 })
+        new THREE.MeshStandardMaterial({
+          color: isTkd ? 0x1d4ed8 : 0xef4444,
+          roughness: 0.25,
+        })
       );
       hammerMesh.rotation.x = Math.PI / 2;
       hammerMesh.position.set(0, -armLength, 0);
@@ -1089,7 +1294,7 @@ export class ObstacleCourse {
       pivotGroup.add(hammerMesh);
       this.courseGroup.add(pivotGroup);
 
-      const body = this.world.createRigidBody(
+      const body = this.createBody(
         RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(
           pivotPos.x,
           pivotPos.y - armLength,
@@ -1119,13 +1324,18 @@ export class ObstacleCourse {
   }
 
   private buildZone5FinishArch(): void {
-    // Final sweeper before goal
-    this.createSweeper(126, 0, 5.2, 4.0, 2, 0x3b82f6);
+    const isTkd = this.mapTheme === 'TAEKWONDO';
+    this.createSweeper(126, 0, 5.2, 4.0, 2, isTkd ? 0x0f172a : 0x3b82f6);
 
     const cx = this.getTrackCenterX(FINISH_Z);
     const yaw = this.getTrackYawAtZ(FINISH_Z);
     const finishY = this.getTrackHeightAtZ(FINISH_Z);
-    const checkTex = this.createCheckeredTexture('#ffffff', '#0f172a', 12, 2);
+    const checkTex = this.createCheckeredTexture(
+      isTkd ? '#facc15' : '#ffffff',
+      '#0f172a',
+      12,
+      2
+    );
 
     const finishGroup = new THREE.Group();
     finishGroup.position.set(cx, finishY, FINISH_Z);
@@ -1139,7 +1349,10 @@ export class ObstacleCourse {
     finishStrip.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
     finishGroup.add(finishStrip);
 
-    const archMat = new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25 });
+    const archMat = new THREE.MeshStandardMaterial({
+      color: isTkd ? 0x1e293b : 0xfacc15,
+      roughness: 0.25,
+    });
     for (const side of [-1, 1]) {
       const col = new THREE.Mesh(new THREE.BoxGeometry(0.9, 8.2, 0.9), archMat);
       col.position.set(side * 8.6, 4.1, 0);
@@ -1166,7 +1379,6 @@ export class ObstacleCourse {
     this.startGateMesh.position.set(cx, baseY, z);
     this.startGateBody.setNextKinematicTranslation({ x: cx, y: baseY, z });
 
-    // Re-shuffle passable Mystery [?] Doors each race!
     if (this.mysteryDoors.length > 0) {
       const passableFlags = Array.from({ length: this.mysteryDoors.length }, (_, i) => i < 3);
       for (let i = passableFlags.length - 1; i > 0; i--) {
@@ -1206,7 +1418,7 @@ export class ObstacleCourse {
       this.startGateBody.setNextKinematicTranslation({ x: cx, y: curY, z });
     }
 
-    // 2. Rotating Sweepers (2-blade or 3-blade)
+    // 2. Rotating Sweepers
     for (const sw of this.sweepers) {
       sw.angle += sw.speed * dt;
       const quat = new THREE.Quaternion().setFromAxisAngle(
@@ -1254,7 +1466,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 3. Mystery [?] Doors check (break/open vs bounce back!)
+    // 3. Mystery [?] Doors / Taekwondo Pinewood Breaking Boards
     for (const door of this.mysteryDoors) {
       if (door.isOpened && door.openAngle < Math.PI * 0.48) {
         door.openAngle = Math.min(Math.PI * 0.48, door.openAngle + dt * 6.5);
@@ -1273,13 +1485,11 @@ export class ObstacleCourse {
         if (dist < 1.85 && Math.abs(rPos.y - door.basePos.y) < 2.2) {
           door.hitCooldowns.set(r.id, this.elapsedTime);
           if (door.isPassable) {
-            // Break/Swing open smoothly!
             door.isOpened = true;
             door.collider.setSensor(true);
-            particles.spawnHitBurst(door.basePos, '#fbbf24', 12);
+            particles.spawnHitBurst(door.basePos, '#fbbf24', 14);
             sound.playBumperBounce();
           } else {
-            // Solid wrong door! Bounce racer back into ragdoll!
             r.triggerRagdoll(
               {
                 x: (Math.random() - 0.5) * 14,

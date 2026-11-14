@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { ParticipantEntry, RacerState } from '../types';
+import type { MapTheme, ParticipantEntry, RacerState } from '../types';
 
 export const GROUP_ENV = 0x0001;
 export const GROUP_TORSO = 0x0002;
@@ -83,7 +83,8 @@ export class RagdollRacer {
     index: number,
     spawnPos: THREE.Vector3,
     world: RAPIER.World,
-    scene: THREE.Scene
+    scene: THREE.Scene,
+    mapTheme: MapTheme = 'PLAYGROUND'
   ) {
     this.id = entry.id;
     this.name = entry.name;
@@ -233,14 +234,15 @@ export class RagdollRacer {
     this.faceTexture = new THREE.CanvasTexture(this.faceCanvas);
     this.drawFaceTexture('NORMAL');
 
+    const isTaekwondo = mapTheme === 'TAEKWONDO';
     const skinColor = new THREE.Color('#fde047'); // Classic Roblox yellow head/hands
     const torsoMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(this.color),
+      color: isTaekwondo ? new THREE.Color('#f8fafc') : new THREE.Color(this.color),
       roughness: 0.32,
-      metalness: 0.08,
+      metalness: 0.05,
     });
     const limbMat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(this.accentColor),
+      color: isTaekwondo ? new THREE.Color('#f1f5f9') : new THREE.Color(this.accentColor),
       roughness: 0.4,
       metalness: 0.05,
     });
@@ -255,26 +257,57 @@ export class RagdollRacer {
       metalness: 0.05,
     });
 
-    // Torso mesh with chest stripe detail
     this.torsoMesh = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.84, 0.42), torsoMat);
     this.torsoMesh.castShadow = true;
     this.torsoMesh.receiveShadow = true;
-    const chestBadge = new THREE.Mesh(
-      new THREE.BoxGeometry(0.46, 0.26, 0.44),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
-    );
-    chestBadge.position.set(0, 0.12, 0);
-    this.torsoMesh.add(chestBadge);
+
+    if (isTaekwondo) {
+      // Taekwondo Dobok black/red V-neck collar + colored rank belt + hogu chest protector accent
+      const collarMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
+      const collarV = new THREE.Mesh(new THREE.BoxGeometry(0.38, 0.26, 0.44), collarMat);
+      collarV.position.set(0, 0.24, 0);
+      this.torsoMesh.add(collarV);
+
+      const beltMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(this.color),
+        roughness: 0.3,
+      });
+      const waistBelt = new THREE.Mesh(new THREE.BoxGeometry(0.8, 0.16, 0.46), beltMat);
+      waistBelt.position.set(0, -0.22, 0);
+      this.torsoMesh.add(waistBelt);
+
+      const beltKnot = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.28, 0.5), beltMat);
+      beltKnot.position.set(0, -0.28, 0.02);
+      this.torsoMesh.add(beltKnot);
+    } else {
+      const chestBadge = new THREE.Mesh(
+        new THREE.BoxGeometry(0.46, 0.26, 0.44),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 })
+      );
+      chestBadge.position.set(0, 0.12, 0);
+      this.torsoMesh.add(chestBadge);
+    }
 
     // Head mesh (6 materials so +Z front has face)
     const headMats = [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat];
     this.headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.54, 0.54), headMats);
     this.headMesh.castShadow = true;
 
+    if (isTaekwondo) {
+      // Cute Martial Arts Headband in racer's color!
+      const bandMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(this.color),
+        roughness: 0.3,
+      });
+      const headband = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.12, 0.58), bandMat);
+      headband.position.set(0, 0.14, 0);
+      this.headMesh.add(headband);
+    }
+
     // Arms & Legs meshes
     const armGeo = new THREE.BoxGeometry(0.3, 0.74, 0.3);
-    this.leftArmMesh = new THREE.Mesh(armGeo, skinMat);
-    this.rightArmMesh = new THREE.Mesh(armGeo, skinMat);
+    this.leftArmMesh = new THREE.Mesh(armGeo, isTaekwondo ? torsoMat : skinMat);
+    this.rightArmMesh = new THREE.Mesh(armGeo, isTaekwondo ? torsoMat : skinMat);
     this.leftArmMesh.castShadow = true;
     this.rightArmMesh.castShadow = true;
 
@@ -675,13 +708,31 @@ export class RagdollRacer {
       }
     }
 
+    // Prevent any floor seam or collider penetration from trapping a character
+    if (pos.y < expectedFloorY + 0.55) {
+      this.torsoBody.setTranslation(
+        { x: pos.x, y: expectedFloorY + 1.15, z: pos.z },
+        true
+      );
+      if (vel.y < 0) {
+        this.torsoBody.setLinvel({ x: vel.x, y: 2.5, z: vel.z }, true);
+      }
+    }
+
     // Anti-stuck emergency hop if blocked by a wall or mystery door
     if (Math.abs(pos.z - this.lastProgressZ) < 0.35) {
       this.stuckTimer += dt;
-      if (this.stuckTimer > 1.8) {
+      if (this.stuckTimer > 1.2) {
         this.stuckTimer = 0;
-        const centerPull = Math.sign(centerX - pos.x) * 16;
-        this.torsoBody.applyImpulse({ x: centerPull, y: 24, z: 12 }, true);
+        const centerPull = (centerX - pos.x) * 3.2;
+        this.torsoBody.applyImpulse(
+          {
+            x: Math.max(-18, Math.min(18, centerPull)),
+            y: 25,
+            z: 14,
+          },
+          true
+        );
       }
     } else {
       this.lastProgressZ = pos.z;

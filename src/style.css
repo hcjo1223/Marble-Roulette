@@ -119,6 +119,22 @@ body.slowmo-active #letterbox-bottom {
   white-space: nowrap;
 }
 
+.map-switch-pill {
+  pointer-events: auto;
+  background: #dbeafe;
+  color: #1e3a8a;
+  cursor: pointer;
+}
+
+.map-switch-pill:hover {
+  background: #bfdbfe;
+}
+
+.map-switch-pill.tkd-active {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
 .timer-pill {
   font-family: var(--font-mono);
 }
@@ -466,6 +482,34 @@ button:active {
 
 .preset-btn:hover {
   background: #e2e8f0;
+}
+
+.map-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.map-btn {
+  background: #f1f5f9;
+  color: var(--ink-muted);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 9px 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.map-btn.active {
+  background: #dbeafe;
+  color: #1e3a8a;
+  border-color: #2563eb;
+}
+
+.map-btn[data-map="TAEKWONDO"].active {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #dc2626;
 }
 
 .rule-selector {
