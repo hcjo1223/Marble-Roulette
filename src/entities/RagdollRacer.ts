@@ -495,9 +495,9 @@ export class RagdollRacer {
     this.torsoBody.applyTorqueImpulse({ x: tx, y: ty, z: tz }, true);
 
     // Release joint motor stiffness so all limbs flop and swing wildly on their joints!
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngX, 0, 3, 0.8);
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngY, 0, 3, 0.8);
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngZ, 0, 3, 0.8);
+    this.configureNeckMotor(RAPIER.JointAxis.AngX, 0, 3, 0.8);
+    this.configureNeckMotor(RAPIER.JointAxis.AngY, 0, 3, 0.8);
+    this.configureNeckMotor(RAPIER.JointAxis.AngZ, 0, 3, 0.8);
 
     this.leftShoulderJoint.configureMotorPosition(0, 2, 0.4);
     this.rightShoulderJoint.configureMotorPosition(0, 2, 0.4);
@@ -716,14 +716,52 @@ export class RagdollRacer {
     this.runCyclePhase += dt * (8.5 + speed * 0.65);
     const swing = Math.sin(this.runCyclePhase) * Math.min(1.15, 0.35 + speed * 0.075);
 
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngX, -forwardTilt * 0.5, 140, 14);
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngY, 0, 140, 14);
-    this.neckJoint.configureMotorPosition(RAPIER.JointAxis.AngZ, 0, 140, 14);
+    this.configureNeckMotor(RAPIER.JointAxis.AngX, -forwardTilt * 0.5, 140, 14);
+    this.configureNeckMotor(RAPIER.JointAxis.AngY, 0, 140, 14);
+    this.configureNeckMotor(RAPIER.JointAxis.AngZ, 0, 140, 14);
 
     this.leftShoulderJoint.configureMotorPosition(swing, 160, 16);
     this.rightShoulderJoint.configureMotorPosition(-swing, 160, 16);
     this.leftHipJoint.configureMotorPosition(-swing, 185, 18);
     this.rightHipJoint.configureMotorPosition(swing, 185, 18);
+  }
+
+  private configureNeckMotor(
+    axis: RAPIER.JointAxis,
+    targetPos: number,
+    stiffness: number,
+    damping: number
+  ): void {
+    const joint = this.neckJoint as unknown as {
+      configureMotorPosition?: (
+        axis: RAPIER.JointAxis,
+        targetPos: number,
+        stiffness: number,
+        damping: number
+      ) => void;
+      rawSet?: {
+        jointConfigureMotorPosition: (
+          handle: number,
+          axis: RAPIER.JointAxis,
+          targetPos: number,
+          stiffness: number,
+          damping: number
+        ) => void;
+      };
+      handle?: number;
+    };
+
+    if (typeof joint.configureMotorPosition === 'function') {
+      joint.configureMotorPosition(axis, targetPos, stiffness, damping);
+    } else if (joint.rawSet && typeof joint.handle === 'number') {
+      joint.rawSet.jointConfigureMotorPosition(
+        joint.handle,
+        axis,
+        targetPos,
+        stiffness,
+        damping
+      );
+    }
   }
 
   public markFinished(order: number, timeSec: number): void {
