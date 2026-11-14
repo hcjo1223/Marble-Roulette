@@ -10,13 +10,13 @@ import { FINISH_Z, ObstacleCourse } from './world/ObstacleCourse';
 import { CameraDirector } from './camera/CameraDirector';
 
 const PALETTE = [
-  { main: '#ef4444', accent: '#991b1b' },
+  { main: '#ef4444', accent: '#b91c1c' },
   { main: '#3b82f6', accent: '#1d4ed8' },
-  { main: '#10b981', accent: '#047857' },
+  { main: '#22c55e', accent: '#15803d' },
   { main: '#f59e0b', accent: '#b45309' },
   { main: '#06b6d4', accent: '#0e7490' },
   { main: '#ec4899', accent: '#be185d' },
-  { main: '#84cc16', accent: '#4d7c0f' },
+  { main: '#a855f7', accent: '#7e22ce' },
   { main: '#f97316', accent: '#c2410c' },
   { main: '#14b8a6', accent: '#0f766e' },
   { main: '#eab308', accent: '#a16207' },
@@ -25,14 +25,11 @@ const PALETTE = [
 ];
 
 const PRESETS: Record<string, string> = {
+  class20: Array.from({ length: 20 }, (_, i) => `${i + 1}번`).join(', '),
   coffee:
     '김팀장, 이선임, 박대리, 최사원, 정과장, 강매니저, 조디자이너, 윤개발, 장기획, 한마케터',
-  lunch:
-    '한우국밥, 돈까스정식, 마라탕, 초밥세트, 김치찌개, 쌀국수, 수제버거, 제육볶음, 냉면, 파스타, 부대찌개, 카레라이스, 순대국, 짬뽕, 샐러드볼, 타코',
-  weighted:
-    '김부장*4, 박차장*3, 이과장*2, 최대리*2, 정사원*1, 막내인턴*1',
-  mass:
-    '참가자01, 참가자02, 참가자03, 참가자04, 참가자05, 참가자06, 참가자07, 참가자08, 참가자09, 참가자10, 참가자11, 참가자12, 참가자13, 참가자14, 참가자15, 참가자16, 참가자17, 참가자18, 참가자19, 참가자20, 참가자21, 참가자22, 참가자23, 참가자24, 참가자25, 참가자26, 참가자27, 참가자28',
+  weighted: '김부장*4, 박차장*3, 이과장*2, 최대리*2, 정사원*1, 막내인턴*1',
+  mass: Array.from({ length: 28 }, (_, i) => `${i + 1}번`).join(', '),
 };
 
 class RagdollDerbyGame {
@@ -72,17 +69,17 @@ class RagdollDerbyGame {
 
     const isMobile = this.isMobileViewport();
 
-    // 1. Initialize Three.js Scene & Renderer
+    // 1. Bright Sunny Daylight Three.js Scene (IMG_2317 style!)
     const container = document.getElementById('canvas-container')!;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#0b1325');
-    this.scene.fog = new THREE.FogExp2('#0b1325', 0.0048);
+    this.scene.background = new THREE.Color('#cce7ff');
+    this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
 
     const camera = new THREE.PerspectiveCamera(
       isMobile ? 66 : 56,
       window.innerWidth / window.innerHeight,
       0.3,
-      350
+      360
     );
 
     this.renderer = new THREE.WebGLRenderer({
@@ -94,21 +91,21 @@ class RagdollDerbyGame {
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
-    this.renderer.toneMappingExposure = 1.1;
+    this.renderer.toneMappingExposure = 1.08;
     container.appendChild(this.renderer.domElement);
 
-    // 2. Lighting
-    const hemiLight = new THREE.HemisphereLight(0xe0f2fe, 0x1e293b, 0.85);
+    // 2. Bright Sunny Daylight Lighting
+    const hemiLight = new THREE.HemisphereLight(0xffffff, 0x94a3b8, 1.15);
     this.scene.add(hemiLight);
 
-    this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.65);
-    this.dirLight.position.set(24, 42, 18);
+    this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.45);
+    this.dirLight.position.set(24, 44, 16);
     this.dirLight.castShadow = true;
     const shadowRes = isMobile ? 1024 : 2048;
     this.dirLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.dirLight.shadow.camera.near = 2;
     this.dirLight.shadow.camera.far = 140;
-    const d = 32;
+    const d = 34;
     this.dirLight.shadow.camera.left = -d;
     this.dirLight.shadow.camera.right = d;
     this.dirLight.shadow.camera.top = d;
@@ -123,7 +120,6 @@ class RagdollDerbyGame {
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
     this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
 
-    // Direct 3D Tap-to-Focus on any character in the viewport (great for mobile!)
     this.cameraDirector.onCanvasTap = (clientX, clientY) => {
       this.handleCanvasTapFocus(clientX, clientY);
     };
@@ -153,7 +149,7 @@ class RagdollDerbyGame {
     this.raycaster.setFromCamera(ndc, this.cameraDirector.camera);
 
     let closestRacer: RagdollRacer | null = null;
-    let minRayDist = 1.65; // generous touch radius around 3D character
+    let minRayDist = 1.65;
 
     for (const r of this.racers) {
       const pos = r.getPosition();
@@ -205,8 +201,8 @@ class RagdollDerbyGame {
 
     if (entries.length < 2) {
       return [
-        { id: 'r-1', name: '참가자 A', color: PALETTE[0].main, accentColor: PALETTE[0].accent },
-        { id: 'r-2', name: '참가자 B', color: PALETTE[1].main, accentColor: PALETTE[1].accent },
+        { id: 'r-1', name: '1번', color: PALETTE[0].main, accentColor: PALETTE[0].accent },
+        { id: 'r-2', name: '2번', color: PALETTE[1].main, accentColor: PALETTE[1].accent },
       ];
     }
 
@@ -217,13 +213,11 @@ class RagdollDerbyGame {
     const textarea = document.getElementById('participants-input') as HTMLTextAreaElement;
     const entries = this.parseParticipantsText(textarea.value);
 
-    // Shuffle grid order for fair starting positions
     for (let i = entries.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [entries[i], entries[j]] = [entries[j], entries[i]];
     }
 
-    // Clear old racers
     for (const r of this.racers) {
       r.dispose();
     }
@@ -231,7 +225,7 @@ class RagdollDerbyGame {
     this.sortedRacers = [];
     this.finishedRacers = [];
     this.particles.clear();
-    this.course.resetGate();
+    this.course.resetCourseState();
 
     this.phase = 'READY';
     this.raceElapsed = 0;
@@ -240,12 +234,12 @@ class RagdollDerbyGame {
     this.winnerAnnounced = false;
     this.setSlowMoVisuals(false);
 
-    const quickStartBtn = document.getElementById('btn-mobile-quick-start');
-    if (quickStartBtn) {
-      quickStartBtn.textContent = '🏁 시작';
-    }
+    document.getElementById('hud-timer')!.textContent = '0.0초';
+    document.getElementById('hud-zone-badge')!.textContent = '🏠 교실';
 
-    // Spawn in neat rows behind the Start Gate (Z = 1.5 .. 7.5)
+    const quickStartBtn = document.getElementById('btn-quick-start');
+    if (quickStartBtn) quickStartBtn.textContent = '🏁 시작';
+
     const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(entries.length * 1.5))));
     const spacingX = 1.85;
     const spacingZ = 1.55;
@@ -254,8 +248,9 @@ class RagdollDerbyGame {
       const row = Math.floor(idx / cols);
       const col = idx % cols;
       const itemsInRow = Math.min(cols, entries.length - row * cols);
-      const x = (col - (itemsInRow - 1) * 0.5) * spacingX + (Math.random() - 0.5) * 0.15;
-      const z = Math.max(-2.0, 6.8 - row * spacingZ);
+      const z = Math.max(-2.0, 6.2 - row * spacingZ);
+      const cx = this.course.getTrackCenterX(z);
+      const x = cx + (col - (itemsInRow - 1) * 0.5) * spacingX + (Math.random() - 0.5) * 0.15;
       const y = this.course.getTrackHeightAtZ(z) + 1.45;
 
       const racer = new RagdollRacer(
@@ -276,28 +271,22 @@ class RagdollDerbyGame {
   private updateRuleTelemetry(): void {
     const total = this.racers.length;
     const countBadge = document.getElementById('parsed-count-badge')!;
-    const hudCount = document.getElementById('hud-racer-count')!;
     const hudRule = document.getElementById('hud-win-rule')!;
-    const mobileTargetBadge = document.getElementById('mobile-target-badge')!;
     const nthInput = document.getElementById('nth-rank-input') as HTMLInputElement;
 
     countBadge.textContent = `${total}명 준비됨`;
-    hudCount.textContent = `${total}명`;
     nthInput.max = String(total);
 
     if (this.winningRule === 'FIRST') {
       this.targetRank = 1;
       hudRule.textContent = '🏆 1등 당첨';
-      mobileTargetBadge.textContent = '🎯 1등 당첨';
     } else if (this.winningRule === 'LAST') {
       this.targetRank = total;
-      hudRule.textContent = `💀 꼴찌(${total}등) 당첨`;
-      mobileTargetBadge.textContent = `🎯 꼴찌(${total}등)`;
+      hudRule.textContent = `💀 꼴찌(${total}등)`;
     } else {
       const requested = Math.max(1, Math.min(total, parseInt(nthInput.value, 10) || 2));
       this.targetRank = requested;
       hudRule.textContent = `🎯 ${requested}등 당첨`;
-      mobileTargetBadge.textContent = `🎯 ${requested}등 당첨`;
     }
   }
 
@@ -305,25 +294,16 @@ class RagdollDerbyGame {
     this.rebuildRacersFromInput();
     this.phase = 'COUNTDOWN';
 
-    const winnerModal = document.getElementById('winner-modal')!;
-    winnerModal.classList.add('hidden');
-
-    // Collapse floating drawers so full 3D view is unobstructed
+    document.getElementById('winner-modal')!.classList.add('hidden');
     document.getElementById('setup-panel')!.classList.add('collapsed');
     document.getElementById('leaderboard-panel')!.classList.add('mobile-collapsed');
 
-    const quickStartBtn = document.getElementById('btn-mobile-quick-start');
-    if (quickStartBtn) {
-      quickStartBtn.textContent = '🔄 재시작';
-    }
+    const quickStartBtn = document.getElementById('btn-quick-start');
+    if (quickStartBtn) quickStartBtn.textContent = '🔄 재시작';
 
     const overlay = document.getElementById('countdown-overlay')!;
     const textEl = document.getElementById('countdown-text')!;
     overlay.classList.remove('hidden');
-
-    const hudState = document.getElementById('hud-race-state')!;
-    hudState.textContent = '카운트다운';
-    hudState.className = 'stat-value state-ready';
 
     let step = 3;
     textEl.textContent = '3';
@@ -339,8 +319,6 @@ class RagdollDerbyGame {
         this.sound.playCountdownBeep(true);
         this.course.openStartGate();
         this.phase = 'RACING';
-        hudState.textContent = '레이스 진행 중';
-        hudState.className = 'stat-value state-racing';
 
         for (const r of this.racers) {
           r.state = 'RUNNING';
@@ -349,7 +327,7 @@ class RagdollDerbyGame {
         clearInterval(timer);
         overlay.classList.add('hidden');
       }
-    }, 680);
+    }, 620);
   }
 
   private triggerGlobalRagdollBlast(): void {
@@ -377,16 +355,8 @@ class RagdollDerbyGame {
   private setSlowMoVisuals(active: boolean): void {
     this.cameraDirector.isClimaxSlowMo = active;
     document.body.classList.toggle('slowmo-active', active);
-    const banner = document.getElementById('slowmo-banner')!;
-    banner.classList.toggle('hidden', !active);
-    const btnSlowMo = document.getElementById('btn-slowmo-toggle')!;
-    btnSlowMo.classList.toggle('active', active);
-
-    const hudState = document.getElementById('hud-race-state')!;
-    if (this.phase === 'RACING') {
-      hudState.textContent = active ? '🎬 슬로우 모션' : '레이스 진행 중';
-      hudState.className = active ? 'stat-value state-slowmo' : 'stat-value state-racing';
-    }
+    document.getElementById('slowmo-banner')!.classList.toggle('hidden', !active);
+    document.getElementById('btn-slowmo-toggle')!.classList.toggle('active', active);
   }
 
   private bindUIEvents(): void {
@@ -415,12 +385,11 @@ class RagdollDerbyGame {
     });
 
     document.getElementById('btn-toggle-leaderboard')!.addEventListener('click', toggleLeaderboard);
-    document.getElementById('mobile-ticker-tap')!.addEventListener('click', toggleLeaderboard);
     document.getElementById('btn-close-leaderboard')!.addEventListener('click', () => {
       leaderboardPanel.classList.add('mobile-collapsed');
     });
 
-    document.getElementById('btn-mobile-quick-start')!.addEventListener('click', () => {
+    document.getElementById('btn-quick-start')!.addEventListener('click', () => {
       this.startRaceCountdown();
     });
 
@@ -431,7 +400,6 @@ class RagdollDerbyGame {
       }
     });
 
-    // Presets
     document.querySelectorAll<HTMLButtonElement>('.preset-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
         const key = btn.dataset.preset!;
@@ -442,7 +410,6 @@ class RagdollDerbyGame {
       });
     });
 
-    // Winning Rule selector
     const nthRow = document.getElementById('nth-rank-row')!;
     document.querySelectorAll<HTMLButtonElement>('.rule-btn').forEach((btn) => {
       btn.addEventListener('click', () => {
@@ -458,7 +425,6 @@ class RagdollDerbyGame {
       this.updateRuleTelemetry();
     });
 
-    // Start & Shuffle buttons
     document.getElementById('btn-start-race')!.addEventListener('click', () => {
       this.startRaceCountdown();
     });
@@ -471,13 +437,10 @@ class RagdollDerbyGame {
       this.triggerGlobalRagdollBlast();
     });
 
-    // Audio toggles
     const btnSound = document.getElementById('btn-sound-toggle')!;
     btnSound.addEventListener('click', () => {
       const muted = this.sound.toggleMute();
-      btnSound.innerHTML = muted
-        ? '🔇 <span class="hide-sm">음소거</span>'
-        : '🔊 <span class="hide-sm">효과음</span>';
+      btnSound.textContent = muted ? '🔇' : '🔊';
       btnSound.classList.toggle('muted', muted);
     });
 
@@ -492,7 +455,6 @@ class RagdollDerbyGame {
       }
     });
 
-    // Camera Dock Buttons
     const updateCameraButtons = (activeMode: CameraMode) => {
       document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
         btn.classList.toggle('active', btn.dataset.cam === activeMode);
@@ -506,7 +468,6 @@ class RagdollDerbyGame {
       });
     });
 
-    // Slow-Mo toggle
     const toggleManualSlowMo = () => {
       this.manualSlowMo = !this.manualSlowMo;
       if (this.manualSlowMo) {
@@ -517,7 +478,6 @@ class RagdollDerbyGame {
 
     document.getElementById('btn-slowmo-toggle')!.addEventListener('click', toggleManualSlowMo);
 
-    // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
       if (
         document.activeElement?.tagName === 'TEXTAREA' ||
@@ -535,7 +495,6 @@ class RagdollDerbyGame {
       }
     });
 
-    // Winner Modal buttons
     document.getElementById('btn-modal-rematch')!.addEventListener('click', () => {
       this.startRaceCountdown();
     });
@@ -589,23 +548,22 @@ class RagdollDerbyGame {
       const rowEl = document.getElementById(`leader-row-${r.id}`);
       if (rowEl) {
         rowEl.style.order = String(rank);
-        rowEl.classList.toggle('focused', this.cameraDirector.focusedRacerId === r.id);
-        rowEl.classList.toggle('target-winner', rank === this.targetRank);
-
-        const posZ = r.getPosition().z;
-        const pct = Math.min(100, Math.max(0, Math.round((posZ / FINISH_Z) * 100)));
+        rowEl.className = 'leader-item';
+        if (rank === 1) rowEl.classList.add('rank-1');
+        else if (rank === 2) rowEl.classList.add('rank-2');
+        else if (rank === 3) rowEl.classList.add('rank-3');
+        if (this.cameraDirector.focusedRacerId === r.id) rowEl.classList.add('focused');
+        if (rank === this.targetRank) rowEl.classList.add('target-winner');
 
         let badgeHtml = '';
         if (r.state === 'FINISHED') {
-          badgeHtml = `<span class="state-pill goal">🏁 #${r.finishOrder}</span>`;
+          badgeHtml = `<span class="state-pill goal">🏁</span>`;
         } else if (r.state === 'RAGDOLL') {
-          badgeHtml = `<span class="state-pill ragdoll">💥 피격</span>`;
-        } else {
-          badgeHtml = `<span>${pct}%</span>`;
+          badgeHtml = `<span class="state-pill ragdoll">💫</span>`;
         }
 
         rowEl.innerHTML = `
-          <span class="leader-rank">#${rank}</span>
+          <span class="leader-rank">${rank}</span>
           <span class="leader-swatch" style="background:${r.color}"></span>
           <span class="leader-name">${r.name}</span>
           <span class="leader-meta">${badgeHtml}</span>
@@ -614,18 +572,18 @@ class RagdollDerbyGame {
 
       const dotEl = document.getElementById(`minimap-dot-${r.id}`);
       if (dotEl) {
-        const pct = Math.min(98, Math.max(2, (r.getPosition().z / FINISH_Z) * 92));
+        const pct = Math.min(97, Math.max(2, (r.getPosition().z / FINISH_Z) * 93));
         dotEl.style.left = `${pct}%`;
         dotEl.style.zIndex = rank === this.targetRank ? '10' : '2';
       }
     });
 
-    // Update Mobile Live Ticker
+    // Update Zone Badge based on leader's current track position
     if (this.sortedRacers.length > 0) {
-      const lead = this.sortedRacers[0];
-      const leadEl = document.getElementById('mobile-lead-badge');
-      if (leadEl) {
-        leadEl.textContent = `🥇 1위: ${lead.name}`;
+      const leadZ = this.sortedRacers[0].getPosition().z;
+      const zoneEl = document.getElementById('hud-zone-badge');
+      if (zoneEl) {
+        zoneEl.textContent = this.course.getZoneLabelAtZ(leadZ);
       }
     }
   }
@@ -636,18 +594,15 @@ class RagdollDerbyGame {
     this.manualSlowMo = false;
     this.setSlowMoVisuals(false);
 
-    // Focus camera on the winner!
     this.cameraDirector.focusedRacerId = winner.id;
     this.sound.playFinishChime(true);
 
-    // Confetti celebration
     confetti({
       particleCount: 110,
       spread: 80,
       origin: { y: 0.55 },
     });
 
-    // Populate Winner Modal
     const modal = document.getElementById('winner-modal')!;
     const badge = document.getElementById('modal-rule-badge')!;
     const title = document.getElementById('modal-winner-name')!;
@@ -666,10 +621,10 @@ class RagdollDerbyGame {
 
     title.textContent = winner.name;
     title.style.color = winner.color;
-    desc.textContent = `총 ${winner.ragdollCount}번의 래그돌 충돌과 장애물 기믹을 뚫고 최종 #${winner.finishOrder}위로 결승선을 통과했습니다!`;
+    desc.textContent = `총 ${winner.ragdollCount}번의 장애물 충돌과 래그돌 몸싸움을 뚫고 #${winner.finishOrder}위로 결승선을 통과했습니다!`;
 
     statRank.textContent = `#${winner.finishOrder}위`;
-    statTime.textContent = `${(winner.finishTime || this.raceElapsed).toFixed(2)}s`;
+    statTime.textContent = `${(winner.finishTime || this.raceElapsed).toFixed(2)}초`;
     statRagdolls.textContent = `💥 ${winner.ragdollCount}회`;
 
     rankList.innerHTML = '';
@@ -696,13 +651,11 @@ class RagdollDerbyGame {
     const realDt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
     this.lastFrameTime = now;
 
-    // Determine decisive racer (the racer currently in position for targetRank)
     const decisiveRacer =
       this.sortedRacers[Math.min(this.sortedRacers.length - 1, this.targetRank - 1)] ||
       this.sortedRacers[0] ||
       null;
 
-    // Check Automatic Climax Slow-Motion right before finish line!
     if (
       this.phase === 'RACING' &&
       !this.hasTriggeredAutoSlowMo &&
@@ -713,7 +666,7 @@ class RagdollDerbyGame {
       const z = decisiveRacer.getPosition().z;
       if (z >= FINISH_Z - 11.5 && z < FINISH_Z) {
         this.hasTriggeredAutoSlowMo = true;
-        this.autoSlowMoTimer = 2.3; // 2.3 real-time seconds of dramatic slow-motion
+        this.autoSlowMoTimer = 2.3;
         this.sound.playSlowMoTrigger();
         this.setSlowMoVisuals(true);
       }
@@ -732,26 +685,22 @@ class RagdollDerbyGame {
 
     if (this.phase === 'RACING') {
       this.raceElapsed += simDt;
-      const formattedTime = `${this.raceElapsed.toFixed(1)}s`;
-      document.getElementById('hud-timer')!.textContent = formattedTime;
-      const mobileTimeEl = document.getElementById('mobile-time-badge');
-      if (mobileTimeEl) mobileTimeEl.textContent = formattedTime;
+      document.getElementById('hud-timer')!.textContent = `${this.raceElapsed.toFixed(1)}초`;
     }
 
-    // Step Physics & Obstacles
     this.course.update(simDt, this.racers, this.particles, this.sound);
 
     for (const r of this.racers) {
       r.updateAIAndPhysics(
         simDt,
         this.racers.length,
+        (z) => this.course.getTrackCenterX(z),
         (z) => this.course.getTrackHalfWidthAtZ(z),
         (z) => this.course.getTrackHeightAtZ(z),
         () => this.sound.playJump(),
         (respawnPos) => this.particles.spawnRespawnFlash(respawnPos)
       );
 
-      // Check Finish Line Crossing
       if (this.phase === 'RACING' && r.state !== 'FINISHED') {
         const pos = r.getPosition();
         if (pos.z >= FINISH_Z) {
@@ -766,8 +715,6 @@ class RagdollDerbyGame {
 
           if (this.finishedRacers.length === this.racers.length) {
             this.phase = 'FINISHED';
-            const hudState = document.getElementById('hud-race-state')!;
-            hudState.textContent = '완주 종료';
           }
         }
       }
@@ -778,7 +725,6 @@ class RagdollDerbyGame {
 
     this.particles.update(simDt);
 
-    // Sort racers by finish order first, then descending Z coordinate
     this.sortedRacers.sort((a, b) => {
       if (a.finishOrder !== null && b.finishOrder !== null) {
         return a.finishOrder - b.finishOrder;
@@ -792,17 +738,19 @@ class RagdollDerbyGame {
       r.syncVisuals(this.cameraDirector.focusedRacerId === r.id);
     }
 
-    // Update dynamic shadow light to follow lead pack
     if (this.sortedRacers.length > 0) {
       const leadPos = (decisiveRacer || this.sortedRacers[0]).getPosition();
-      this.dirLight.position.set(leadPos.x + 22, leadPos.y + 38, leadPos.z - 12);
+      this.dirLight.position.set(leadPos.x + 22, leadPos.y + 40, leadPos.z - 12);
       this.dirLight.target.position.copy(leadPos);
     }
 
-    // Update Spectator Camera
-    this.cameraDirector.update(realDt, this.sortedRacers, decisiveRacer);
+    this.cameraDirector.update(
+      realDt,
+      this.sortedRacers,
+      decisiveRacer,
+      (z) => this.course.getTrackCenterX(z)
+    );
 
-    // Throttle DOM leaderboard updates to ~12Hz for 60FPS performance
     this.uiUpdateAccum += realDt;
     if (this.uiUpdateAccum >= 0.08) {
       this.uiUpdateAccum = 0;

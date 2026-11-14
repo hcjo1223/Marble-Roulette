@@ -319,9 +319,10 @@ export class RagdollRacer {
       map: this.labelTexture,
       transparent: true,
       depthTest: false,
+      toneMapped: false,
     });
     this.labelSprite = new THREE.Sprite(spriteMat);
-    this.labelSprite.scale.set(2.9, 0.76, 1);
+    this.labelSprite.scale.set(1.78, 0.48, 1);
     this.labelSprite.renderOrder = 999;
     scene.add(this.labelSprite);
 
@@ -342,23 +343,30 @@ export class RagdollRacer {
     ctx.lineCap = 'round';
 
     if (mode === 'NORMAL') {
-      // Determined Roblox eyes + grin
+      // Cute cheerful chibi eyes + rosy cheeks
       ctx.beginPath();
-      ctx.arc(42, 52, 8, 0, Math.PI * 2);
-      ctx.arc(86, 52, 8, 0, Math.PI * 2);
+      ctx.arc(42, 54, 8.5, 0, Math.PI * 2);
+      ctx.arc(86, 54, 8.5, 0, Math.PI * 2);
       ctx.fill();
 
-      // Eyebrows
+      // White eye sparkles
+      ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.moveTo(30, 36);
-      ctx.lineTo(52, 41);
-      ctx.moveTo(98, 36);
-      ctx.lineTo(76, 41);
-      ctx.stroke();
+      ctx.arc(44, 51, 3, 0, Math.PI * 2);
+      ctx.arc(88, 51, 3, 0, Math.PI * 2);
+      ctx.fill();
 
-      // Smile
+      // Rosy cheeks
+      ctx.fillStyle = 'rgba(244, 63, 94, 0.35)';
       ctx.beginPath();
-      ctx.arc(64, 74, 20, 0.15 * Math.PI, 0.85 * Math.PI);
+      ctx.ellipse(26, 68, 9, 5.5, 0, 0, Math.PI * 2);
+      ctx.ellipse(102, 68, 9, 5.5, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Happy smile
+      ctx.strokeStyle = '#1e293b';
+      ctx.beginPath();
+      ctx.arc(64, 72, 16, 0.15 * Math.PI, 0.85 * Math.PI);
       ctx.stroke();
     } else if (mode === 'DIZZY') {
       // X _ X ragdoll knockback face
@@ -410,57 +418,57 @@ export class RagdollRacer {
     const ctx = this.labelCtx;
     ctx.clearRect(0, 0, 320, 84);
 
-    // Pill background
+    // Crisp bright white pill tag (IMG_2317.jpeg style!)
     const isHit = this.state === 'RAGDOLL';
     const isHighlight = this.isTargetRankCandidate;
 
     ctx.fillStyle = isHit
-      ? 'rgba(185, 28, 28, 0.92)'
+      ? '#fef2f2'
       : isHighlight
-      ? 'rgba(245, 158, 11, 0.95)'
-      : 'rgba(15, 23, 42, 0.86)';
-    ctx.strokeStyle = isHighlight ? '#fef08a' : this.color;
-    ctx.lineWidth = isHighlight ? 4 : 3;
+      ? '#fef08a'
+      : 'rgba(255, 255, 255, 0.96)';
+    ctx.strokeStyle = isHit ? '#ef4444' : isHighlight ? '#d97706' : '#1e293b';
+    ctx.lineWidth = isHighlight ? 5 : 4;
 
-    const rx = 14;
-    const ry = 10;
-    const rw = 292;
-    const rh = 62;
-    const radius = 16;
+    const rx = 18;
+    const ry = 12;
+    const rw = 284;
+    const rh = 58;
+    const radius = 28;
 
     ctx.beginPath();
     ctx.roundRect(rx, ry, rw, rh, radius);
     ctx.fill();
     ctx.stroke();
 
-    // Rank badge circle
+    // Colored circle dot / rank badge
     ctx.fillStyle = this.color;
     ctx.beginPath();
-    ctx.roundRect(rx + 8, ry + 8, 54, 46, 10);
+    ctx.roundRect(rx + 8, ry + 8, 52, 42, 20);
     ctx.fill();
 
     ctx.fillStyle = '#ffffff';
     ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`#${this.rank}`, rx + 35, ry + 32);
+    ctx.fillText(`#${this.rank}`, rx + 34, ry + 30);
 
-    // Name text
+    // Name text (dark slate on crisp white pill)
     const statusIcon =
       this.state === 'RAGDOLL'
-        ? ' 💥'
+        ? ' 💫'
         : this.state === 'FINISHED'
-        ? ' 🏁'
+        ? ' 👑'
         : isHighlight
         ? ' 🎯'
         : '';
     const displayText =
-      (this.name.length > 9 ? this.name.slice(0, 9) + '…' : this.name) + statusIcon;
+      (this.name.length > 7 ? this.name.slice(0, 7) + '…' : this.name) + statusIcon;
 
-    ctx.fillStyle = isHighlight ? '#0f172a' : '#f8fafc';
-    ctx.font = '700 24px "Plus Jakarta Sans", "Pretendard", sans-serif';
+    ctx.fillStyle = '#0f172a';
+    ctx.font = '800 28px "Plus Jakarta Sans", "Pretendard", sans-serif';
     ctx.textAlign = 'left';
-    ctx.fillText(displayText, rx + 72, ry + 32);
+    ctx.fillText(displayText, rx + 68, ry + 30);
 
     this.labelTexture.needsUpdate = true;
   }
@@ -547,6 +555,7 @@ export class RagdollRacer {
   public updateAIAndPhysics(
     dt: number,
     totalRacers: number,
+    trackCenterXAtZ: (z: number) => number,
     trackHalfWidthAtZ: (z: number) => number,
     trackHeightAtZ: (z: number) => number,
     onJumpCallback?: () => void,
@@ -570,12 +579,13 @@ export class RagdollRacer {
       return;
     }
 
-    // Check out-of-bounds fall respawn
+    // Check out-of-bounds fall respawn onto curved track center
     const expectedFloorY = trackHeightAtZ(pos.z);
     if (pos.y < expectedFloorY - 9.5) {
       const safeZ = Math.max(4, pos.z - 4);
+      const safeCX = trackCenterXAtZ(safeZ);
       const respawnPos = new THREE.Vector3(
-        (Math.random() - 0.5) * 5,
+        safeCX + (Math.random() - 0.5) * 4.5,
         trackHeightAtZ(safeZ) + 3.2,
         safeZ
       );
@@ -606,28 +616,31 @@ export class RagdollRacer {
       }
     }
 
-    // Autonomous RUNNING Steering + Randomness
+    // Autonomous RUNNING Steering + Randomness along curved track!
+    const centerX = trackCenterXAtZ(pos.z);
+    const lookAheadCenterX = trackCenterXAtZ(pos.z + 5.0);
     const halfWidth = trackHalfWidthAtZ(pos.z);
     const safeHalfWidth = Math.max(2.2, halfWidth - 1.3);
 
-    // Sinusoidal wander + lane preference
-    const wanderX =
+    // Sinusoidal wander + lane preference relative to curved track center
+    const wanderOffset =
       Math.sin(this.elapsedTime * this.wanderFreq1 + this.wanderPhase1) * 3.4 +
       Math.cos(this.elapsedTime * this.wanderFreq2 + this.wanderPhase2) * 1.9 +
       this.preferredLaneOffset * (safeHalfWidth / 8.0);
 
-    const clampedTargetX = Math.max(-safeHalfWidth, Math.min(safeHalfWidth, wanderX));
-    const lateralError = clampedTargetX - pos.x;
+    const clampedOffset = Math.max(-safeHalfWidth, Math.min(safeHalfWidth, wanderOffset));
+    const targetWorldX = lookAheadCenterX + clampedOffset;
+    const lateralError = targetWorldX - pos.x;
 
     // Rubber-banding comeback factor (trailing racers get a subtle adrenaline boost)
     const rankRatio = totalRacers > 1 ? (this.rank - 1) / (totalRacers - 1) : 0;
     const comebackMultiplier = 1.0 + rankRatio * 0.19;
     const desiredForwardSpeed = this.baseSpeed * comebackMultiplier;
-    const desiredLateralSpeed = Math.max(-6.5, Math.min(6.5, lateralError * 2.1));
+    const desiredLateralSpeed = Math.max(-8.0, Math.min(8.0, lateralError * 2.2));
 
     // Apply steering force to reach desired velocity
     const forceZ = (desiredForwardSpeed - vel.z) * 16.5;
-    const forceX = (desiredLateralSpeed - vel.x) * 14.0;
+    const forceX = (desiredLateralSpeed - vel.x) * 14.5;
 
     this.torsoBody.applyImpulse(
       {
@@ -639,16 +652,16 @@ export class RagdollRacer {
     );
 
     // Upright orientation + active joint limb stride
-    const yawAngle = Math.atan2(vel.x * 0.45, Math.max(2.0, vel.z));
+    const yawAngle = Math.atan2(vel.x * 0.6, Math.max(2.0, vel.z));
     const currentSpeed = Math.hypot(vel.x, vel.z);
     this.maintainUprightPose(yawAngle, dt, currentSpeed);
 
-    // Random jump timing + obstacle hop
+    // Cute bouncy "총총" running hop + random obstacle jump
     this.jumpCooldown -= dt;
     const nearGround = pos.y - expectedFloorY < 2.15 && Math.abs(vel.y) < 2.2;
     if (this.jumpCooldown <= 0 && nearGround) {
-      this.jumpCooldown = 1.9 + Math.random() * 2.7;
-      const jumpImpulseY = 21 + Math.random() * 7;
+      this.jumpCooldown = 1.4 + Math.random() * 2.4;
+      const jumpImpulseY = 18 + Math.random() * 8;
       this.torsoBody.applyImpulse(
         {
           x: (Math.random() - 0.5) * 4,
@@ -657,17 +670,17 @@ export class RagdollRacer {
         },
         true
       );
-      if (onJumpCallback && Math.random() < 0.35) {
+      if (onJumpCallback && Math.random() < 0.3) {
         onJumpCallback();
       }
     }
 
-    // Anti-stuck emergency hop if blocked by a wall or bottleneck
+    // Anti-stuck emergency hop if blocked by a wall or mystery door
     if (Math.abs(pos.z - this.lastProgressZ) < 0.35) {
       this.stuckTimer += dt;
-      if (this.stuckTimer > 2.2) {
+      if (this.stuckTimer > 1.8) {
         this.stuckTimer = 0;
-        const centerPull = -Math.sign(pos.x) * 14;
+        const centerPull = Math.sign(centerX - pos.x) * 16;
         this.torsoBody.applyImpulse({ x: centerPull, y: 24, z: 12 }, true);
       }
     } else {

@@ -151,7 +151,8 @@ export class CameraDirector {
   public update(
     realDt: number,
     sortedRacers: RagdollRacer[],
-    decisiveRacer: RagdollRacer | null
+    decisiveRacer: RagdollRacer | null,
+    trackCenterXAtZ?: (z: number) => number
   ): void {
     if (sortedRacers.length === 0) return;
 
@@ -182,9 +183,10 @@ export class CameraDirector {
         centerZ = sumZ / pool.length;
         this.topPanZ = THREE.MathUtils.lerp(this.topPanZ, centerZ, realDt * 3);
       }
-      const baseY = -Math.tan(0.105) * this.topPanZ;
-      desiredPos.set(0, baseY + 46 * portraitScale, this.topPanZ - 14);
-      desiredLook.set(0, baseY, this.topPanZ + 6);
+      const cx = trackCenterXAtZ ? trackCenterXAtZ(this.topPanZ) : 0;
+      const baseY = -Math.tan(0.088) * this.topPanZ;
+      desiredPos.set(cx, baseY + 46 * portraitScale, this.topPanZ - 14);
+      desiredLook.set(cx, baseY, this.topPanZ + 8);
     } else if (this.mode === 'LAST') {
       // Follow Last Place racer
       const lastRacer = pool[pool.length - 1];
@@ -194,7 +196,7 @@ export class CameraDirector {
       const offsetY = Math.sin(this.orbitPitch) * effectiveDist + 2.5;
 
       desiredPos.set(p.x + offsetX, p.y + offsetY, p.z + offsetZ);
-      desiredLook.set(p.x, p.y + 0.8, p.z + 4.5);
+      desiredLook.set(p.x, p.y + 0.8, p.z + 5.5);
     } else if (this.mode === 'FREE') {
       // Follow clicked racer or decisive racer with full touch/mouse orbit
       const target =
@@ -208,25 +210,32 @@ export class CameraDirector {
       const offsetY = Math.sin(this.orbitPitch) * dist + 1.8;
 
       desiredPos.set(p.x + offsetX, p.y + offsetY, p.z + offsetZ);
-      desiredLook.set(p.x, p.y + 0.6, p.z + 2.5);
+      desiredLook.set(p.x, p.y + 0.6, p.z + 3.5);
     } else {
-      // 'LEAD' mode: Follow leading pack (1st & 2nd place blend)
+      // 'LEAD' mode: Follow leading pack & look ahead down the curved track
       const leader = pool[0];
       const second = pool.length > 1 ? pool[1] : leader;
       const p1 = leader.getPosition();
       const p2 = second.getPosition();
 
-      const blend = Math.abs(p1.z - p2.z) < 8 ? 0.3 : 0.0;
+      const blend = Math.abs(p1.z - p2.z) < 8 ? 0.35 : 0.0;
       const focusX = p1.x * (1 - blend) + p2.x * blend;
       const focusY = p1.y * (1 - blend) + p2.y * blend;
       const focusZ = p1.z * (1 - blend) + p2.z * blend;
 
       const offsetX = Math.sin(this.orbitYaw) * effectiveDist;
       const offsetZ = -Math.cos(this.orbitYaw) * effectiveDist;
-      const offsetY = Math.sin(this.orbitPitch) * effectiveDist + 2.8;
+      const offsetY = Math.sin(this.orbitPitch) * effectiveDist + 3.2;
+
+      const aheadZ = focusZ + 12.0;
+      const aheadCX = trackCenterXAtZ ? trackCenterXAtZ(aheadZ) : focusX;
 
       desiredPos.set(focusX + offsetX, focusY + offsetY, focusZ + offsetZ);
-      desiredLook.set(focusX * 0.7, focusY + 0.6, focusZ + 5.5);
+      desiredLook.set(
+        focusX * 0.45 + aheadCX * 0.55,
+        focusY + 0.2,
+        focusZ + 7.5
+      );
     }
 
     const smoothSpeed = this.isClimaxSlowMo ? 8.5 : 6.0;
