@@ -44,6 +44,7 @@ class RagdollDerbyGame {
   private course!: ObstacleCourse;
   private particles!: ParticleSystem;
   private sound: SoundManager = new SoundManager();
+  private raycaster: THREE.Raycaster = new THREE.Raycaster();
 
   private racers: RagdollRacer[] = [];
   private sortedRacers: RagdollRacer[] = [];
@@ -62,8 +63,14 @@ class RagdollDerbyGame {
   private lastFrameTime: number = performance.now();
   private uiUpdateAccum: number = 0;
 
+  private isMobileViewport(): boolean {
+    return window.innerWidth <= 768;
+  }
+
   public async init(): Promise<void> {
     await RAPIER.init();
+
+    const isMobile = this.isMobileViewport();
 
     // 1. Initialize Three.js Scene & Renderer
     const container = document.getElementById('canvas-container')!;
@@ -72,15 +79,18 @@ class RagdollDerbyGame {
     this.scene.fog = new THREE.FogExp2('#0b1325', 0.0048);
 
     const camera = new THREE.PerspectiveCamera(
-      56,
+      isMobile ? 66 : 56,
       window.innerWidth / window.innerHeight,
       0.3,
       350
     );
 
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
+    this.renderer = new THREE.WebGLRenderer({
+      antialias: true,
+      powerPreference: 'high-performance',
+    });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.75 : 2));
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -94,7 +104,8 @@ class RagdollDerbyGame {
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.65);
     this.dirLight.position.set(24, 42, 18);
     this.dirLight.castShadow = true;
-    this.dirLight.shadow.mapSize.set(2048, 2048);
+    const shadowRes = isMobile ? 1024 : 2048;
+    this.dirLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.dirLight.shadow.camera.near = 2;
     this.dirLight.shadow.camera.far = 140;
     const d = 32;
@@ -110,18 +121,57 @@ class RagdollDerbyGame {
     this.particles = new ParticleSystem(this.scene);
     this.course = new ObstacleCourse(this.world, this.scene);
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
+    this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
+
+    // Direct 3D Tap-to-Focus on any character in the viewport (great for mobile!)
+    this.cameraDirector.onCanvasTap = (clientX, clientY) => {
+      this.handleCanvasTapFocus(clientX, clientY);
+    };
 
     // 4. Bind UI Events & Spawn Initial Racers
     this.bindUIEvents();
     this.rebuildRacersFromInput();
 
-    window.addEventListener('resize', () => {
-      this.cameraDirector.camera.aspect = window.innerWidth / window.innerHeight;
-      this.cameraDirector.camera.updateProjectionMatrix();
+    const handleResize = () => {
+      this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+    };
+
+    window.addEventListener('resize', handleResize);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(handleResize, 120);
     });
 
     requestAnimationFrame((now) => this.animate(now));
+  }
+
+  private handleCanvasTapFocus(clientX: number, clientY: number): void {
+    const ndc = new THREE.Vector2(
+      (clientX / window.innerWidth) * 2 - 1,
+      -(clientY / window.innerHeight) * 2 + 1
+    );
+    this.raycaster.setFromCamera(ndc, this.cameraDirector.camera);
+
+    let closestRacer: RagdollRacer | null = null;
+    let minRayDist = 1.65; // generous touch radius around 3D character
+
+    for (const r of this.racers) {
+      const pos = r.getPosition();
+      const distToRay = this.raycaster.ray.distanceToPoint(pos);
+      if (distToRay < minRayDist) {
+        minRayDist = distToRay;
+        closestRacer = r;
+      }
+    }
+
+    if (closestRacer) {
+      this.cameraDirector.focusOnRacer(closestRacer.id, (mode) => {
+        document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
+          btn.classList.toggle('active', btn.dataset.cam === mode);
+        });
+      });
+      this.renderLeaderboardUI(false);
+    }
   }
 
   private parseParticipantsText(raw: string): ParticipantEntry[] {
@@ -190,6 +240,11 @@ class RagdollDerbyGame {
     this.winnerAnnounced = false;
     this.setSlowMoVisuals(false);
 
+    const quickStartBtn = document.getElementById('btn-mobile-quick-start');
+    if (quickStartBtn) {
+      quickStartBtn.textContent = '🏁 시작';
+    }
+
     // Spawn in neat rows behind the Start Gate (Z = 1.5 .. 7.5)
     const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(entries.length * 1.5))));
     const spacingX = 1.85;
@@ -223,6 +278,7 @@ class RagdollDerbyGame {
     const countBadge = document.getElementById('parsed-count-badge')!;
     const hudCount = document.getElementById('hud-racer-count')!;
     const hudRule = document.getElementById('hud-win-rule')!;
+    const mobileTargetBadge = document.getElementById('mobile-target-badge')!;
     const nthInput = document.getElementById('nth-rank-input') as HTMLInputElement;
 
     countBadge.textContent = `${total}명 준비됨`;
@@ -232,13 +288,16 @@ class RagdollDerbyGame {
     if (this.winningRule === 'FIRST') {
       this.targetRank = 1;
       hudRule.textContent = '🏆 1등 당첨';
+      mobileTargetBadge.textContent = '🎯 1등 당첨';
     } else if (this.winningRule === 'LAST') {
       this.targetRank = total;
       hudRule.textContent = `💀 꼴찌(${total}등) 당첨`;
+      mobileTargetBadge.textContent = `🎯 꼴찌(${total}등)`;
     } else {
       const requested = Math.max(1, Math.min(total, parseInt(nthInput.value, 10) || 2));
       this.targetRank = requested;
       hudRule.textContent = `🎯 ${requested}등 당첨`;
+      mobileTargetBadge.textContent = `🎯 ${requested}등 당첨`;
     }
   }
 
@@ -246,12 +305,17 @@ class RagdollDerbyGame {
     this.rebuildRacersFromInput();
     this.phase = 'COUNTDOWN';
 
-    // Collapse setup panel on smaller screens or keep tidy
     const winnerModal = document.getElementById('winner-modal')!;
     winnerModal.classList.add('hidden');
 
-    const setupPanel = document.getElementById('setup-panel')!;
-    setupPanel.classList.add('collapsed');
+    // Collapse floating drawers so full 3D view is unobstructed
+    document.getElementById('setup-panel')!.classList.add('collapsed');
+    document.getElementById('leaderboard-panel')!.classList.add('mobile-collapsed');
+
+    const quickStartBtn = document.getElementById('btn-mobile-quick-start');
+    if (quickStartBtn) {
+      quickStartBtn.textContent = '🔄 재시작';
+    }
 
     const overlay = document.getElementById('countdown-overlay')!;
     const textEl = document.getElementById('countdown-text')!;
@@ -327,8 +391,37 @@ class RagdollDerbyGame {
 
   private bindUIEvents(): void {
     const setupPanel = document.getElementById('setup-panel')!;
-    document.getElementById('btn-toggle-setup')!.addEventListener('click', () => {
+    const leaderboardPanel = document.getElementById('leaderboard-panel')!;
+
+    const toggleSetup = () => {
+      const willOpen = setupPanel.classList.contains('collapsed');
       setupPanel.classList.toggle('collapsed');
+      if (willOpen && this.isMobileViewport()) {
+        leaderboardPanel.classList.add('mobile-collapsed');
+      }
+    };
+
+    const toggleLeaderboard = () => {
+      const willOpen = leaderboardPanel.classList.contains('mobile-collapsed');
+      leaderboardPanel.classList.toggle('mobile-collapsed');
+      if (willOpen && this.isMobileViewport()) {
+        setupPanel.classList.add('collapsed');
+      }
+    };
+
+    document.getElementById('btn-toggle-setup')!.addEventListener('click', toggleSetup);
+    document.getElementById('btn-close-setup')!.addEventListener('click', () => {
+      setupPanel.classList.add('collapsed');
+    });
+
+    document.getElementById('btn-toggle-leaderboard')!.addEventListener('click', toggleLeaderboard);
+    document.getElementById('mobile-ticker-tap')!.addEventListener('click', toggleLeaderboard);
+    document.getElementById('btn-close-leaderboard')!.addEventListener('click', () => {
+      leaderboardPanel.classList.add('mobile-collapsed');
+    });
+
+    document.getElementById('btn-mobile-quick-start')!.addEventListener('click', () => {
+      this.startRaceCountdown();
     });
 
     const textarea = document.getElementById('participants-input') as HTMLTextAreaElement;
@@ -382,7 +475,9 @@ class RagdollDerbyGame {
     const btnSound = document.getElementById('btn-sound-toggle')!;
     btnSound.addEventListener('click', () => {
       const muted = this.sound.toggleMute();
-      btnSound.textContent = muted ? '🔇 음소거됨' : '🔊 효과음';
+      btnSound.innerHTML = muted
+        ? '🔇 <span class="hide-sm">음소거</span>'
+        : '🔊 <span class="hide-sm">효과음</span>';
       btnSound.classList.toggle('muted', muted);
     });
 
@@ -424,7 +519,10 @@ class RagdollDerbyGame {
 
     // Keyboard shortcuts
     window.addEventListener('keydown', (e) => {
-      if (document.activeElement?.tagName === 'TEXTAREA' || document.activeElement?.tagName === 'INPUT') {
+      if (
+        document.activeElement?.tagName === 'TEXTAREA' ||
+        document.activeElement?.tagName === 'INPUT'
+      ) {
         return;
       }
       if (e.key === '1') this.cameraDirector.setMode('LEAD', updateCameraButtons);
@@ -443,13 +541,16 @@ class RagdollDerbyGame {
     });
     document.getElementById('btn-modal-close')!.addEventListener('click', () => {
       document.getElementById('winner-modal')!.classList.add('hidden');
-      setupPanel.classList.remove('collapsed');
+      if (!this.isMobileViewport()) {
+        setupPanel.classList.remove('collapsed');
+      }
     });
   }
 
   private renderLeaderboardUI(rebuildDOM: boolean = false): void {
     const listEl = document.getElementById('leaderboard-list')!;
     const dotsEl = document.getElementById('minimap-dots')!;
+    const leaderboardPanel = document.getElementById('leaderboard-panel')!;
 
     if (rebuildDOM) {
       listEl.innerHTML = '';
@@ -465,6 +566,9 @@ class RagdollDerbyGame {
               btn.classList.toggle('active', btn.dataset.cam === mode);
             });
           });
+          if (this.isMobileViewport()) {
+            leaderboardPanel.classList.add('mobile-collapsed');
+          }
           this.renderLeaderboardUI(false);
         });
         listEl.appendChild(item);
@@ -515,6 +619,15 @@ class RagdollDerbyGame {
         dotEl.style.zIndex = rank === this.targetRank ? '10' : '2';
       }
     });
+
+    // Update Mobile Live Ticker
+    if (this.sortedRacers.length > 0) {
+      const lead = this.sortedRacers[0];
+      const leadEl = document.getElementById('mobile-lead-badge');
+      if (leadEl) {
+        leadEl.textContent = `🥇 1위: ${lead.name}`;
+      }
+    }
   }
 
   private announceWinner(winner: RagdollRacer): void {
@@ -619,8 +732,10 @@ class RagdollDerbyGame {
 
     if (this.phase === 'RACING') {
       this.raceElapsed += simDt;
-      const timerEl = document.getElementById('hud-timer')!;
-      timerEl.textContent = `${this.raceElapsed.toFixed(1)}s`;
+      const formattedTime = `${this.raceElapsed.toFixed(1)}s`;
+      document.getElementById('hud-timer')!.textContent = formattedTime;
+      const mobileTimeEl = document.getElementById('mobile-time-badge');
+      if (mobileTimeEl) mobileTimeEl.textContent = formattedTime;
     }
 
     // Step Physics & Obstacles

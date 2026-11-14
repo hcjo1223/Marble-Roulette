@@ -7,6 +7,19 @@ export class SoundManager {
   private bgmInterval: number | null = null;
   public bgmPlaying: boolean = false;
 
+  constructor() {
+    const unlockAudio = () => {
+      const ctx = this.ensureContext();
+      if (ctx && ctx.state === 'suspended') {
+        ctx.resume().catch(() => {});
+      }
+      window.removeEventListener('touchstart', unlockAudio);
+      window.removeEventListener('pointerdown', unlockAudio);
+    };
+    window.addEventListener('touchstart', unlockAudio, { passive: true });
+    window.addEventListener('pointerdown', unlockAudio, { passive: true });
+  }
+
   private ensureContext(): AudioContext | null {
     if (this.muted) return null;
     if (!this.ctx) {
