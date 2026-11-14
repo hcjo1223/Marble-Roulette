@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build && cp -r dist/* docs/ && touch dist/.nojekyll docs/.nojekyll",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "deploy": "npm run build && git subtree split --prefix dist -b gh-pages && git push -f origin gh-pages"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
