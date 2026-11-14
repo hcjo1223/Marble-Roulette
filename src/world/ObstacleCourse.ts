@@ -27,6 +27,7 @@ interface SweeperData {
 }
 
 interface MysteryDoorData {
+  rowGroup: number;
   pivotGroup: THREE.Group;
   body: RAPIER.RigidBody;
   collider: RAPIER.Collider;
@@ -86,6 +87,44 @@ interface PendulumData {
   hitCooldowns: Map<string, number>;
 }
 
+interface SlidingShieldData {
+  body: RAPIER.RigidBody;
+  mesh: THREE.Group;
+  baseZ: number;
+  baseY: number;
+  halfW: number;
+  halfH: number;
+  halfD: number;
+  ampX: number;
+  freq: number;
+  phase: number;
+  lastX: number;
+  hitCooldowns: Map<string, number>;
+}
+
+interface SpringboardData {
+  z: number;
+  offsetX: number;
+  halfW: number;
+  halfL: number;
+  boostZ: number;
+  boostY: number;
+  mesh: THREE.Group;
+  hitCooldowns: Map<string, number>;
+}
+
+interface ShockwaveDrumData {
+  zMin: number;
+  zMax: number;
+  side: number;
+  dirX: number;
+  freq: number;
+  phase: number;
+  drumMesh: THREE.Group;
+  waveMesh: THREE.Mesh;
+  hitCooldowns: Map<string, number>;
+}
+
 export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
@@ -105,6 +144,9 @@ export class ObstacleCourse {
   private windFans: WindFanData[] = [];
   private conveyors: ConveyorData[] = [];
   private pendulums: PendulumData[] = [];
+  private slidingShields: SlidingShieldData[] = [];
+  private springboards: SpringboardData[] = [];
+  private shockwaveDrums: ShockwaveDrumData[] = [];
 
   private elapsedTime: number = 0;
 
@@ -117,11 +159,12 @@ export class ObstacleCourse {
 
     this.buildCurvedTrackAndScenery();
     this.buildStartGate();
-    this.buildZone1Obstacles();
-    this.buildZone2MysteryDoorsAndBumpers();
-    this.buildZone3WindAndConveyors();
-    this.buildZone4Bottleneck();
-    this.buildZone5FinishArch();
+
+    if (this.mapTheme === 'TAEKWONDO') {
+      this.buildTaekwondoCourse();
+    } else {
+      this.buildPlaygroundCourse();
+    }
   }
 
   private createBody(desc: RAPIER.RigidBodyDesc): RAPIER.RigidBody {
@@ -178,8 +221,8 @@ export class ObstacleCourse {
   public getZoneLabelAtZ(z: number): string {
     if (this.mapTheme === 'TAEKWONDO') {
       if (z < 42) return '🥋 태권도장';
-      if (z < 72) return '🪵 송판 격파';
-      if (z < 100) return '🌪️ 장풍 수련';
+      if (z < 72) return '🪵 송판 & 기와 격파';
+      if (z < 100) return '🥁 기합 장풍 존';
       if (z < FINISH_Z) return '⚔️ 대련장';
       return '🏆 승단 심사';
     }
@@ -192,6 +235,56 @@ export class ObstacleCourse {
 
   private envCollisionGroup(): number {
     return makeCollisionGroups(GROUP_ENV, GROUP_TORSO | GROUP_LIMB | GROUP_ENV);
+  }
+
+  /**
+   * Builds a curved ribbon mesh whose every vertex sits strictly at
+   * y = getTrackHeightAtZ(z) + yOffset, guaranteeing zero floor sinking or z-fighting
+   * even along steep S-curves!
+   */
+  private createCurvedFloorStripGeometry(
+    zMin: number,
+    zMax: number,
+    sideOffsetMin: number,
+    sideOffsetMax: number,
+    yOffset: number = 0.08,
+    slices: number = 14
+  ): THREE.BufferGeometry {
+    const positions: number[] = [];
+    const normals: number[] = [];
+    const uvs: number[] = [];
+    const indices: number[] = [];
+
+    const totalLen = zMax - zMin;
+    const ny = Math.cos(TRACK_SLOPE);
+    const nz = Math.sin(TRACK_SLOPE);
+
+    for (let i = 0; i <= slices; i++) {
+      const t = i / slices;
+      const z = zMin + totalLen * t;
+      const cx = this.getTrackCenterX(z);
+      const y = this.getTrackHeightAtZ(z) + yOffset;
+
+      const xL = cx + sideOffsetMin;
+      const xR = cx + sideOffsetMax;
+
+      positions.push(xL, y, z, xR, y, z);
+      normals.push(0, ny, nz, 0, ny, nz);
+      uvs.push(0, t, 1, t);
+
+      if (i < slices) {
+        const base = i * 2;
+        indices.push(base, base + 2, base + 1);
+        indices.push(base + 1, base + 2, base + 3);
+      }
+    }
+
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+    geo.setAttribute('normal', new THREE.Float32BufferAttribute(normals, 3));
+    geo.setAttribute('uv', new THREE.Float32BufferAttribute(uvs, 2));
+    geo.setIndex(indices);
+    return geo;
   }
 
   private createWoodFloorTexture(): THREE.CanvasTexture {
@@ -237,15 +330,13 @@ export class ObstacleCourse {
     canvas.height = 256;
     const ctx = canvas.getContext('2d')!;
 
-    // Classic Blue & Red interlocking Taekwondojang EVA puzzle mat
     ctx.fillStyle = c1;
     ctx.fillRect(0, 0, 256, 256);
     ctx.fillStyle = c2;
     ctx.fillRect(0, 0, 128, 128);
     ctx.fillRect(128, 128, 128, 128);
 
-    // Subtle puzzle seam lines
-    ctx.strokeStyle = 'rgba(255, 255, 255, 0.22)';
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.24)';
     ctx.lineWidth = 3;
     ctx.strokeRect(4, 4, 120, 120);
     ctx.strokeRect(132, 4, 120, 120);
@@ -331,7 +422,7 @@ export class ObstacleCourse {
     });
     const zone3Mat = new THREE.MeshStandardMaterial({
       map: isTkd
-        ? this.createTaekwondoMatTexture('#1d4ed8', '#f59e0b')
+        ? this.createTaekwondoMatTexture('#1e3a8a', '#1d4ed8')
         : this.createPastelTileTexture('#a5f3fc', '#cffafe'),
       roughness: 0.45,
       metalness: 0.05,
@@ -353,7 +444,6 @@ export class ObstacleCourse {
       roughness: 0.4,
     });
 
-    // Pure X-slope quaternion (zero Y-yaw!) for floor slabs so ALL floor pieces lie on the EXACT same mathematical plane with zero vertical step!
     const coplanarFloorQuat = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(TRACK_SLOPE, 0, 0)
     );
@@ -373,7 +463,6 @@ export class ObstacleCourse {
       const wallSegLen = Math.hypot(dx, dz) / Math.cos(TRACK_SLOPE) + 0.95;
       const floorSegLen = dz / Math.cos(TRACK_SLOPE) + 0.4;
       const halfW = this.getTrackHalfWidthAtZ(zMid);
-      // Widen floor slab slightly by |dx| so curved walls are 100% supported without rotating the floor around Y
       const floorHalfW = halfW + Math.abs(dx) * 0.6 + 0.45;
 
       const wallQuat = new THREE.Quaternion().setFromEuler(
@@ -412,7 +501,6 @@ export class ObstacleCourse {
         floorBody
       );
 
-      // Side walls
       const isBridge = zMid >= 103 && zMid <= 123;
       const wallHeight = zMid < 72 ? 3.2 : isBridge ? 0.9 : 1.7;
       const rightX = Math.cos(yaw);
@@ -459,7 +547,6 @@ export class ObstacleCourse {
         );
       }
 
-      // Zone 1 Wall Decorations
       if (zMid >= 10 && zMid <= 40 && Math.round(z0) % 12 === 0) {
         for (const side of [-1, 1]) {
           const decoX = xMid + side * rightX * (halfW - 0.05);
@@ -467,7 +554,6 @@ export class ObstacleCourse {
           const decoY = yMid + 2.0;
 
           if (isTkd) {
-            // Taekwondo Dojo Banner ("태권도 · 백절불굴") or Hanji Lattice Window
             const board = new THREE.Mesh(
               new THREE.BoxGeometry(0.18, 1.5, 4.2),
               new THREE.MeshStandardMaterial({
@@ -512,7 +598,6 @@ export class ObstacleCourse {
       backBody
     );
 
-    // Surrounding ground & trees flanking Zone 4-5 (Z: 95..148)
     const groundMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(110, 80),
       new THREE.MeshStandardMaterial({
@@ -547,11 +632,10 @@ export class ObstacleCourse {
       }
     }
 
-    // Overhead Zone Arch Signs
     if (isTkd) {
       this.addArchSign(11, '🥋 태권도장 수련 시작!', '#dc2626', '#fef2f2', '#991b1b');
-      this.addArchSign(43, '🪵 송판 격파 관문', '#d97706', '#fef3c7', '#92400e');
-      this.addArchSign(72, '🌪️ 장풍 & 스텝 수련', '#2563eb', '#dbeafe', '#1e3a8a');
+      this.addArchSign(43, '🪵 송판 & 기와 격파!', '#d97706', '#fef3c7', '#92400e');
+      this.addArchSign(72, '🥁 기합 장풍 & 품새 스텝', '#2563eb', '#dbeafe', '#1e3a8a');
       this.addArchSign(103, '⚔️ 챔피언 대련장', '#1e293b', '#f8fafc', '#0f172a');
     } else {
       this.addArchSign(11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
@@ -598,7 +682,7 @@ export class ObstacleCourse {
     ctx.stroke();
 
     ctx.fillStyle = textHex;
-    ctx.font = '800 36px "Plus Jakarta Sans", sans-serif';
+    ctx.font = '800 34px "Plus Jakarta Sans", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.fillText(title, 256, 49);
@@ -646,7 +730,18 @@ export class ObstacleCourse {
     this.gateOpen = true;
   }
 
-  private buildZone1Obstacles(): void {
+  // =====================================================================
+  // MAP 1: PLAYGROUND COURSE (교실 -> 복도 관문 -> 강풍/컨베이어 -> 운동장)
+  // =====================================================================
+  private buildPlaygroundCourse(): void {
+    this.buildPlaygroundZone1DesksAndSweepers();
+    this.buildPlaygroundZone2MysteryAndBumpers();
+    this.buildConveyorBeltsAndFans(true);
+    this.buildPlaygroundZone4Pendulums();
+    this.buildFinishArch(false);
+  }
+
+  private buildPlaygroundZone1DesksAndSweepers(): void {
     const obstaclePositions = [
       { z: 16, offset: -5.2 },
       { z: 18, offset: 4.5 },
@@ -658,77 +753,16 @@ export class ObstacleCourse {
       { z: 37, offset: 4.8 },
     ];
 
-    const envGroup = this.envCollisionGroup();
-
-    if (this.mapTheme === 'TAEKWONDO') {
-      // Standing Taekwondo Kicking Dummy Bags (Red & Blue 샌드백 미트)
-      const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
-      const redBagMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
-      const blueBagMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35 });
-      const targetBandMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.3 });
-
-      obstaclePositions.forEach((dp, idx) => {
-        const cx = this.getTrackCenterX(dp.z);
-        const yaw = this.getTrackYawAtZ(dp.z);
-        const wx = cx + Math.cos(yaw) * dp.offset;
-        const wz = dp.z - Math.sin(yaw) * dp.offset;
-        const wy = this.getTrackHeightAtZ(dp.z);
-
-        const bagGroup = new THREE.Group();
-        bagGroup.position.set(wx, wy, wz);
-
-        const base = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.45, 16), baseMat);
-        base.position.y = 0.22;
-        bagGroup.add(base);
-
-        const pad = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.56, 0.56, 1.9, 18),
-          idx % 2 === 0 ? redBagMat : blueBagMat
-        );
-        pad.position.y = 1.35;
-        pad.castShadow = true;
-        bagGroup.add(pad);
-
-        const strikeRing = new THREE.Mesh(
-          new THREE.CylinderGeometry(0.58, 0.58, 0.26, 18),
-          targetBandMat
-        );
-        strikeRing.position.y = 1.5;
-        bagGroup.add(strikeRing);
-
-        this.courseGroup.add(bagGroup);
-
-        const body = this.createBody(
-          RAPIER.RigidBodyDesc.fixed().setTranslation(wx, wy + 1.1, wz)
-        );
-        this.world.createCollider(
-          RAPIER.ColliderDesc.cylinder(1.1, 0.65)
-            .setRestitution(0.95)
-            .setCollisionGroups(envGroup),
-          body
-        );
-      });
-
-      // Martial Arts Spinning Sparring Bars (Black-belt & Red/Blue)
-      this.createSweeper(20, -2.5, 4.6, 3.5, 3, 0x1e293b);
-      this.createSweeper(28, 2.6, 4.8, -3.8, 2, 0xdc2626);
-      this.createSweeper(35, 0, 5.8, 4.0, 3, 0x2563eb);
-      return;
-    }
-
-    // PLAYGROUND: Cute School Desks
     const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.55 });
     const legMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 });
+    const envGroup = this.envCollisionGroup();
 
     for (const dp of obstaclePositions) {
       const cx = this.getTrackCenterX(dp.z);
       const yaw = this.getTrackYawAtZ(dp.z);
-      const rightX = Math.cos(yaw);
-      const rightZ = -Math.sin(yaw);
-
-      const wx = cx + rightX * dp.offset;
-      const wz = dp.z + rightZ * dp.offset;
-      const wy = this.getTrackHeightAtZ(dp.z);
+      const wx = cx + dp.offset;
+      const wz = dp.z;
+      const wy = this.getTrackHeightAtZ(wz);
 
       const deskGroup = new THREE.Group();
       deskGroup.position.set(wx, wy, wz);
@@ -764,6 +798,340 @@ export class ObstacleCourse {
     this.createSweeper(35, 0, 5.8, 3.8, 3, 0x0ea5e9);
   }
 
+  private buildPlaygroundZone2MysteryAndBumpers(): void {
+    this.buildBreakingDoorRow(48, 5, 0, 'MYSTERY');
+
+    const popupSpecs = [
+      { z: 54, offset: -4.0, phase: 0, freq: 3.4 },
+      { z: 54, offset: 4.0, phase: 2.1, freq: 3.4 },
+      { z: 60, offset: 0, phase: 1.0, freq: 3.9 },
+      { z: 66, offset: -3.2, phase: 0.5, freq: 4.2 },
+      { z: 66, offset: 3.2, phase: 2.7, freq: 4.2 },
+    ];
+    this.addPopupBumpers(popupSpecs, 0x10b981);
+
+    const pinballSpecs = [
+      { z: 57, offset: -4.8 },
+      { z: 57, offset: 4.8 },
+      { z: 63, offset: -2.2 },
+      { z: 63, offset: 2.2 },
+      { z: 69, offset: 0 },
+    ];
+    this.addPinballBumpers(pinballSpecs, 0xec4899);
+  }
+
+  private buildPlaygroundZone4Pendulums(): void {
+    this.addSwingingPendulums(
+      [
+        { z: 108, freq: 2.35, phase: 0, maxAngle: 0.92 },
+        { z: 115, freq: 2.6, phase: Math.PI, maxAngle: 0.92 },
+        { z: 121, freq: 2.8, phase: Math.PI * 0.5, maxAngle: 0.92 },
+      ],
+      false
+    );
+    this.createSweeper(126, 0, 5.2, 4.0, 2, 0x3b82f6);
+  }
+
+  // =====================================================================
+  // MAP 2: TAEKWONDO COURSE (완전히 다른 태권도 전용 장애물 구성!)
+  // =====================================================================
+  private buildTaekwondoCourse(): void {
+    this.buildTaekwondoZone1Dojo();
+    this.buildTaekwondoZone2BreakingAndPosts();
+    this.buildTaekwondoZone3PoomsaeAndShockwaves();
+    this.buildTaekwondoZone4SparringArena();
+    this.buildFinishArch(true);
+  }
+
+  private buildTaekwondoZone1Dojo(): void {
+    const envGroup = this.envCollisionGroup();
+
+    // 1. Standing Taekwondo Kicking Dummy Bags (청·홍 샌드백 미트)
+    const bagSpots = [
+      { z: 16, offset: -5.5 },
+      { z: 16, offset: 5.5 },
+      { z: 25, offset: -3.0 },
+      { z: 25, offset: 3.0 },
+      { z: 34, offset: -6.0 },
+      { z: 34, offset: 6.0 },
+    ];
+    const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
+    const redBagMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
+    const blueBagMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35 });
+    const bandMat = new THREE.MeshStandardMaterial({ color: 0xfef08a, roughness: 0.3 });
+
+    bagSpots.forEach((sp, idx) => {
+      const cx = this.getTrackCenterX(sp.z);
+      const wx = cx + sp.offset;
+      const wz = sp.z;
+      const wy = this.getTrackHeightAtZ(wz);
+
+      const bagGroup = new THREE.Group();
+      bagGroup.position.set(wx, wy, wz);
+      const base = new THREE.Mesh(new THREE.CylinderGeometry(0.75, 0.85, 0.45, 16), baseMat);
+      base.position.y = 0.22;
+      const pad = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.56, 0.56, 1.9, 18),
+        idx % 2 === 0 ? redBagMat : blueBagMat
+      );
+      pad.position.y = 1.35;
+      pad.castShadow = true;
+      const ring = new THREE.Mesh(new THREE.CylinderGeometry(0.58, 0.58, 0.26, 18), bandMat);
+      ring.position.y = 1.5;
+      bagGroup.add(base, pad, ring);
+      this.courseGroup.add(bagGroup);
+
+      const body = this.createBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(wx, wy + 1.1, wz)
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(1.1, 0.65)
+          .setRestitution(1.05)
+          .setCollisionGroups(envGroup),
+        body
+      );
+    });
+
+    // 2. Taekwondo Vaulting Springboards (이단 앞차기 도약 발판) - launch racers over obstacles!
+    this.createSpringboard(18.5, -2.5, 2.2, 1.6, 22, 26);
+    this.createSpringboard(18.5, 2.5, 2.2, 1.6, 22, 26);
+    this.createSpringboard(31.0, 0, 2.6, 1.6, 24, 28);
+
+    // 3. Sliding Taekwondo Hogu / Kick Shields (좌우 왕복 타격 방패)
+    this.createSlidingShield(22.0, 2.6, 0.95, 0.45, 5.8, 2.5, 0, 0xdc2626);
+    this.createSlidingShield(28.5, 2.8, 0.95, 0.45, 5.6, 2.9, Math.PI, 0x2563eb);
+    this.createSlidingShield(37.5, 3.0, 1.0, 0.45, 5.5, 3.3, Math.PI * 0.5, 0x0f172a);
+  }
+
+  private buildTaekwondoZone2BreakingAndPosts(): void {
+    // 1. First Breaking Gate: 5 Pinewood Breaking Boards (송판 격파) at Z = 46
+    this.buildBreakingDoorRow(46, 5, 0, 'PINEWOOD');
+
+    // 2. Bamboo/Wooden Wing-Chun & Taekwondo Slalom Posts + Fast 4-Blade Nunchuck Spinner (Z = 51..58)
+    const postSpecs = [
+      { z: 52, offset: -5.2 },
+      { z: 52, offset: 5.2 },
+      { z: 54, offset: -2.2 },
+      { z: 54, offset: 2.2 },
+      { z: 57, offset: -4.5 },
+      { z: 57, offset: 4.5 },
+    ];
+    this.addPinballBumpers(postSpecs, 0xb45309);
+
+    // 4-Blade Black-Belt Nunchuck Spinner in the center!
+    this.createSweeper(55, 0, 5.4, 4.2, 4, 0x0f172a);
+
+    // 3. Second Breaking Gate: 4 Black Roof-Tile Stacks (기와장 격파) at Z = 62!
+    this.buildBreakingDoorRow(62, 4, 1, 'ROOFTILE');
+
+    // 4. Taegeuk Bounce Pads before Zone 3 (Z = 67..70)
+    this.createSpringboard(67.5, -4.5, 2.0, 1.5, 20, 24);
+    this.createSpringboard(67.5, 4.5, 2.0, 1.5, 20, 24);
+    this.createSlidingShield(69.5, 2.4, 0.95, 0.45, 5.4, 3.0, 0, 0xdc2626);
+  }
+
+  private buildTaekwondoZone3PoomsaeAndShockwaves(): void {
+    // 1. Poomsae Rapid-Step Belts (curved strip geometry so NEVER sinks below floor!)
+    this.buildConveyorBeltsAndFans(false);
+
+    // 2. Taekwondo War-Drum Kiai Shockwave Cannons (대북 기합 장풍 충격파!)
+    const drumConfigs = [
+      { zMin: 75, zMax: 81.5, side: -1, dirX: 1, freq: 2.1, phase: 0 },
+      { zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 2.3, phase: 1.6 },
+      { zMin: 90.0, zMax: 96.5, side: -1, dirX: 1, freq: 2.5, phase: 3.1 },
+    ];
+
+    for (const dc of drumConfigs) {
+      const zMid = (dc.zMin + dc.zMax) * 0.5;
+      const cx = this.getTrackCenterX(zMid);
+      const yMid = this.getTrackHeightAtZ(zMid) + 1.8;
+      const drumX = cx + dc.side * 9.8;
+
+      const drumGroup = new THREE.Group();
+      drumGroup.position.set(drumX, yMid, zMid);
+
+      const drumBody = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.85, 1.85, 1.6, 20),
+        new THREE.MeshStandardMaterial({ color: 0x991b1b, roughness: 0.4 })
+      );
+      drumBody.rotation.z = Math.PI / 2;
+      const drumSkin = new THREE.Mesh(
+        new THREE.CylinderGeometry(1.75, 1.75, 1.7, 20),
+        new THREE.MeshStandardMaterial({ color: 0xfef3c7, roughness: 0.5 })
+      );
+      drumSkin.rotation.z = Math.PI / 2;
+      drumGroup.add(drumBody, drumSkin);
+      this.courseGroup.add(drumGroup);
+
+      // Visible Golden Kiai Shockwave Ring sweeping across the track
+      const waveMesh = new THREE.Mesh(
+        new THREE.TorusGeometry(1.7, 0.22, 10, 24),
+        new THREE.MeshBasicMaterial({ color: 0xfacc15, transparent: true, opacity: 0.88 })
+      );
+      waveMesh.rotation.y = Math.PI / 2;
+      waveMesh.position.set(cx, yMid, zMid);
+      this.courseGroup.add(waveMesh);
+
+      this.shockwaveDrums.push({
+        zMin: dc.zMin,
+        zMax: dc.zMax,
+        side: dc.side,
+        dirX: dc.dirX,
+        freq: dc.freq,
+        phase: dc.phase,
+        drumMesh: drumGroup,
+        waveMesh,
+        hitCooldowns: new Map(),
+      });
+    }
+  }
+
+  private buildTaekwondoZone4SparringArena(): void {
+    // 1. Pop-up Sparring Kick Launchers at entrance & exit of bridge
+    this.addPopupBumpers(
+      [
+        { z: 103.5, offset: -2.2, phase: 0, freq: 3.8 },
+        { z: 103.5, offset: 2.2, phase: 1.9, freq: 3.8 },
+        { z: 122.5, offset: 0, phase: 0.9, freq: 4.0 },
+      ],
+      0x2563eb
+    );
+
+    // 2. Hanging Heavy Punching Bags (Z = 108, 118)
+    this.addSwingingPendulums(
+      [
+        { z: 108, freq: 2.5, phase: 0, maxAngle: 0.94 },
+        { z: 118, freq: 2.8, phase: Math.PI, maxAngle: 0.94 },
+      ],
+      true
+    );
+
+    // 3. Sliding Sparring Hogu Shield in the middle of the narrow bridge (Z = 113)
+    this.createSlidingShield(113, 1.8, 0.95, 0.42, 2.7, 3.2, 0.5, 0xdc2626);
+
+    // 4. Master's Final 4-Blade Black-Belt Sweeper before finish (Z = 127)
+    this.createSweeper(127, 0, 5.2, 4.3, 4, 0x0f172a);
+  }
+
+  // =====================================================================
+  // SHARED & MODULAR OBSTACLE BUILDERS
+  // =====================================================================
+  private createSlidingShield(
+    z: number,
+    halfW: number,
+    halfH: number,
+    halfD: number,
+    ampX: number,
+    freq: number,
+    phase: number,
+    colorHex: number
+  ): void {
+    const cx = this.getTrackCenterX(z);
+    const y = this.getTrackHeightAtZ(z) + halfH + 0.05;
+    const initX = cx + Math.sin(phase) * ampX;
+
+    const group = new THREE.Group();
+    group.position.set(initX, y, z);
+
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(halfW * 2, halfH * 2, halfD * 2),
+      new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 })
+    );
+    pad.castShadow = true;
+    const stripe = new THREE.Mesh(
+      new THREE.BoxGeometry(halfW * 2 + 0.08, 0.32, halfD * 2 + 0.08),
+      new THREE.MeshStandardMaterial({ color: 0xfacc15, roughness: 0.25 })
+    );
+    group.add(pad, stripe);
+    this.courseGroup.add(group);
+
+    const body = this.createBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(initX, y, z)
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfW, halfH, halfD)
+        .setRestitution(1.0)
+        .setCollisionGroups(this.envCollisionGroup()),
+      body
+    );
+
+    this.slidingShields.push({
+      body,
+      mesh: group,
+      baseZ: z,
+      baseY: y,
+      halfW,
+      halfH,
+      halfD,
+      ampX,
+      freq,
+      phase,
+      lastX: initX,
+      hitCooldowns: new Map(),
+    });
+  }
+
+  private createSpringboard(
+    z: number,
+    offsetX: number,
+    halfW: number,
+    halfL: number,
+    boostZ: number,
+    boostY: number
+  ): void {
+    const cx = this.getTrackCenterX(z);
+    const wx = cx + offsetX;
+    const wy = this.getTrackHeightAtZ(z) + 0.08;
+
+    const group = new THREE.Group();
+    group.position.set(wx, wy, z);
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#dc2626';
+    ctx.lineWidth = 14;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.beginPath();
+    ctx.moveTo(24, 42);
+    ctx.lineTo(64, 92);
+    ctx.lineTo(104, 42);
+    ctx.stroke();
+    const tex = new THREE.CanvasTexture(canvas);
+
+    const pad = new THREE.Mesh(
+      new THREE.BoxGeometry(halfW * 2, 0.28, halfL * 2),
+      new THREE.MeshStandardMaterial({ map: tex, roughness: 0.35 })
+    );
+    pad.position.y = 0.22;
+    pad.rotation.x = -0.14;
+    pad.castShadow = true;
+    group.add(pad);
+
+    const trim = new THREE.Mesh(
+      new THREE.BoxGeometry(halfW * 2 + 0.2, 0.16, halfL * 2 + 0.2),
+      new THREE.MeshStandardMaterial({ color: 0x1e293b })
+    );
+    trim.position.y = -0.04;
+    group.add(trim);
+    this.courseGroup.add(group);
+
+    this.springboards.push({
+      z,
+      offsetX,
+      halfW,
+      halfL,
+      boostZ,
+      boostY,
+      mesh: group,
+      hitCooldowns: new Map(),
+    });
+  }
+
   private createSweeper(
     z: number,
     lateralOffset: number,
@@ -773,10 +1141,9 @@ export class ObstacleCourse {
     barColorHex: number = 0xef4444
   ): void {
     const cx = this.getTrackCenterX(z);
-    const yaw = this.getTrackYawAtZ(z);
-    const wx = cx + Math.cos(yaw) * lateralOffset;
-    const wz = z - Math.sin(yaw) * lateralOffset;
-    const wy = this.getTrackHeightAtZ(z) + 0.95;
+    const wx = cx + lateralOffset;
+    const wz = z;
+    const wy = this.getTrackHeightAtZ(wz) + 0.95;
     const center = new THREE.Vector3(wx, wy, wz);
 
     const group = new THREE.Group();
@@ -843,36 +1210,21 @@ export class ObstacleCourse {
     });
   }
 
-  private buildZone2MysteryDoorsAndBumpers(): void {
-    // 1. Mystery [?] Doors OR Pinewood Breaking Boards (송판 격파) at Z = 48
-    this.buildMysteryDoorRow(48, 5);
-
-    const isTkd = this.mapTheme === 'TAEKWONDO';
-
-    // 2. Floor Pop-up Spring Bumpers & Pinball Pillars (Z = 54 .. 70)
-    const popupSpecs = [
-      { z: 54, offset: -4.0, phase: 0, freq: 3.4 },
-      { z: 54, offset: 4.0, phase: 2.1, freq: 3.4 },
-      { z: 60, offset: 0, phase: 1.0, freq: 3.9 },
-      { z: 66, offset: -3.2, phase: 0.5, freq: 4.2 },
-      { z: 66, offset: 3.2, phase: 2.7, freq: 4.2 },
-    ];
-
-    for (const ps of popupSpecs) {
+  private addPopupBumpers(
+    specs: { z: number; offset: number; phase: number; freq: number }[],
+    colorHex: number
+  ): void {
+    for (const ps of specs) {
       const cx = this.getTrackCenterX(ps.z);
-      const yaw = this.getTrackYawAtZ(ps.z);
-      const wx = cx + Math.cos(yaw) * ps.offset;
-      const wz = ps.z - Math.sin(yaw) * ps.offset;
-      const wy = this.getTrackHeightAtZ(ps.z);
+      const wx = cx + ps.offset;
+      const wz = ps.z;
+      const wy = this.getTrackHeightAtZ(wz);
       const basePos = new THREE.Vector3(wx, wy, wz);
       const radius = 1.65;
 
       const mesh = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius * 0.9, 1.4, 20),
-        new THREE.MeshStandardMaterial({
-          color: isTkd ? 0x2563eb : 0x10b981,
-          roughness: 0.25,
-        })
+        new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.25 })
       );
       mesh.position.set(basePos.x, basePos.y - 0.5, basePos.z);
       mesh.castShadow = true;
@@ -911,20 +1263,17 @@ export class ObstacleCourse {
         hitCooldowns: new Map(),
       });
     }
+  }
 
-    const pinballSpecs = [
-      { z: 57, offset: -4.8 },
-      { z: 57, offset: 4.8 },
-      { z: 63, offset: -2.2 },
-      { z: 63, offset: 2.2 },
-      { z: 69, offset: 0 },
-    ];
-    for (const pb of pinballSpecs) {
+  private addPinballBumpers(
+    specs: { z: number; offset: number }[],
+    colorHex: number
+  ): void {
+    for (const pb of specs) {
       const cx = this.getTrackCenterX(pb.z);
-      const yaw = this.getTrackYawAtZ(pb.z);
-      const wx = cx + Math.cos(yaw) * pb.offset;
-      const wz = pb.z - Math.sin(yaw) * pb.offset;
-      const wy = this.getTrackHeightAtZ(pb.z) + 1.1;
+      const wx = cx + pb.offset;
+      const wz = pb.z;
+      const wy = this.getTrackHeightAtZ(wz) + 1.1;
       const pos = new THREE.Vector3(wx, wy, wz);
       const radius = 1.15;
 
@@ -932,10 +1281,7 @@ export class ObstacleCourse {
       group.position.copy(pos);
       const core = new THREE.Mesh(
         new THREE.CylinderGeometry(radius, radius * 0.85, 2.2, 20),
-        new THREE.MeshStandardMaterial({
-          color: isTkd ? 0xdc2626 : 0xec4899,
-          roughness: 0.25,
-        })
+        new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.25 })
       );
       core.castShadow = true;
       const band = new THREE.Mesh(
@@ -965,7 +1311,12 @@ export class ObstacleCourse {
     }
   }
 
-  private buildMysteryDoorRow(z: number, doorCount: number): void {
+  private buildBreakingDoorRow(
+    z: number,
+    doorCount: number,
+    rowGroup: number,
+    style: 'MYSTERY' | 'PINEWOOD' | 'ROOFTILE'
+  ): void {
     const cx = this.getTrackCenterX(z);
     const y = this.getTrackHeightAtZ(z);
     const yaw = this.getTrackYawAtZ(z);
@@ -973,18 +1324,15 @@ export class ObstacleCourse {
     const totalW = halfW * 2;
     const slotW = totalW / doorCount;
     const doorW = slotW - 0.55;
-    const isTkd = this.mapTheme === 'TAEKWONDO';
 
     const rightX = Math.cos(yaw);
     const rightZ = -Math.sin(yaw);
 
-    // Frame header beam above doors
+    const headerColor =
+      style === 'PINEWOOD' ? 0x78350f : style === 'ROOFTILE' ? 0x1e293b : 0xd97706;
     const headerMesh = new THREE.Mesh(
       new THREE.BoxGeometry(totalW + 0.6, 0.9, 0.8),
-      new THREE.MeshStandardMaterial({
-        color: isTkd ? 0x78350f : 0xd97706,
-        roughness: 0.5,
-      })
+      new THREE.MeshStandardMaterial({ color: headerColor, roughness: 0.5 })
     );
     headerMesh.position.set(cx, y + 3.7, z);
     headerMesh.rotation.y = yaw;
@@ -995,14 +1343,12 @@ export class ObstacleCourse {
     canvas.height = 192;
     const ctx = canvas.getContext('2d')!;
 
-    if (isTkd) {
-      // Taekwondo Pinewood Breaking Board (송판 격파!)
+    if (style === 'PINEWOOD') {
       ctx.fillStyle = '#fde68a';
       ctx.fillRect(0, 0, 128, 192);
       ctx.strokeStyle = '#d97706';
       ctx.lineWidth = 6;
       ctx.strokeRect(6, 6, 116, 180);
-      // Wood grain lines
       ctx.strokeStyle = 'rgba(180, 83, 9, 0.25)';
       ctx.lineWidth = 3;
       for (let gx = 20; gx < 120; gx += 22) {
@@ -1012,12 +1358,31 @@ export class ObstacleCourse {
         ctx.stroke();
       }
       ctx.fillStyle = '#991b1b';
-      ctx.font = '900 44px "Plus Jakarta Sans", sans-serif';
+      ctx.font = '900 42px "Plus Jakarta Sans", sans-serif';
       ctx.textAlign = 'center';
       ctx.textBaseline = 'middle';
-      ctx.fillText('격파', 64, 78);
-      ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
+      ctx.fillText('송판', 64, 74);
+      ctx.font = '800 28px "Plus Jakarta Sans", sans-serif';
       ctx.fillStyle = '#1e293b';
+      ctx.fillText('격파!', 64, 124);
+    } else if (style === 'ROOFTILE') {
+      ctx.fillStyle = '#334155';
+      ctx.fillRect(0, 0, 128, 192);
+      ctx.strokeStyle = '#0f172a';
+      ctx.lineWidth = 6;
+      for (let gy = 28; gy < 180; gy += 28) {
+        ctx.beginPath();
+        ctx.moveTo(8, gy);
+        ctx.lineTo(120, gy);
+        ctx.stroke();
+      }
+      ctx.fillStyle = '#facc15';
+      ctx.font = '900 40px "Plus Jakarta Sans", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('기와', 64, 76);
+      ctx.font = '800 26px "Plus Jakarta Sans", sans-serif';
+      ctx.fillStyle = '#ffffff';
       ctx.fillText('擊破', 64, 126);
     } else {
       ctx.fillStyle = '#92400e';
@@ -1033,7 +1398,8 @@ export class ObstacleCourse {
     }
     const doorTex = new THREE.CanvasTexture(canvas);
 
-    const passableFlags = Array.from({ length: doorCount }, (_, i) => i < 3);
+    const passableTarget = Math.max(2, Math.ceil(doorCount * 0.55));
+    const passableFlags = Array.from({ length: doorCount }, (_, i) => i < passableTarget);
     for (let i = passableFlags.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
       [passableFlags[i], passableFlags[j]] = [passableFlags[j], passableFlags[i]];
@@ -1043,13 +1409,14 @@ export class ObstacleCourse {
       const offset = -halfW + slotW * (i + 0.5);
       const dx = cx + rightX * offset;
       const dz = z + rightZ * offset;
+      const dy = this.getTrackHeightAtZ(dz);
 
       const pivotGroup = new THREE.Group();
-      pivotGroup.position.set(dx, y + 1.65, dz);
+      pivotGroup.position.set(dx, dy + 1.65, dz);
       pivotGroup.rotation.y = yaw;
 
       const doorMesh = new THREE.Mesh(
-        new THREE.BoxGeometry(doorW, 3.3, isTkd ? 0.32 : 0.42),
+        new THREE.BoxGeometry(doorW, 3.3, style === 'MYSTERY' ? 0.42 : 0.32),
         new THREE.MeshStandardMaterial({ map: doorTex, roughness: 0.45 })
       );
       doorMesh.castShadow = true;
@@ -1060,11 +1427,14 @@ export class ObstacleCourse {
         const divOffset = -halfW + slotW * (i + 1);
         const px = cx + rightX * divOffset;
         const pz = z + rightZ * divOffset;
+        const py = this.getTrackHeightAtZ(pz);
         const pillar = new THREE.Mesh(
           new THREE.BoxGeometry(0.5, 3.8, 0.7),
-          new THREE.MeshStandardMaterial({ color: isTkd ? 0x1e293b : 0xb45309 })
+          new THREE.MeshStandardMaterial({
+            color: style === 'MYSTERY' ? 0xb45309 : 0x1e293b,
+          })
         );
-        pillar.position.set(px, y + 1.9, pz);
+        pillar.position.set(px, py + 1.9, pz);
         pillar.rotation.y = yaw;
         this.courseGroup.add(pillar);
       }
@@ -1072,7 +1442,7 @@ export class ObstacleCourse {
       const quat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, yaw, 0));
       const body = this.createBody(
         RAPIER.RigidBodyDesc.kinematicPositionBased()
-          .setTranslation(dx, y + 1.65, dz)
+          .setTranslation(dx, dy + 1.65, dz)
           .setRotation({ x: quat.x, y: quat.y, z: quat.z, w: quat.w })
       );
       const collider = this.world.createCollider(
@@ -1083,10 +1453,11 @@ export class ObstacleCourse {
       );
 
       this.mysteryDoors.push({
+        rowGroup,
         pivotGroup,
         body,
         collider,
-        basePos: new THREE.Vector3(dx, y + 1.65, dz),
+        basePos: new THREE.Vector3(dx, dy + 1.65, dz),
         yaw,
         isPassable: passableFlags[i],
         isOpened: false,
@@ -1096,7 +1467,7 @@ export class ObstacleCourse {
     }
   }
 
-  private buildZone3WindAndConveyors(): void {
+  private buildConveyorBeltsAndFans(includeFans: boolean): void {
     const beltSpecs = [
       { zMin: 75, zMax: 86, sideOffsetMin: -8.0, sideOffsetMax: -2.6, speedZ: 13.5, isBoost: true },
       { zMin: 75, zMax: 86, sideOffsetMin: -2.2, sideOffsetMax: 2.2, speedZ: -9.0, isBoost: false },
@@ -1106,29 +1477,27 @@ export class ObstacleCourse {
     ];
 
     for (const cfg of beltSpecs) {
-      const zMid = (cfg.zMin + cfg.zMax) * 0.5;
-      const cx = this.getTrackCenterX(zMid);
-      const yaw = this.getTrackYawAtZ(zMid);
-      const yMid = this.getTrackHeightAtZ(zMid) + 0.07;
-
-      const width = cfg.sideOffsetMax - cfg.sideOffsetMin;
-      const latMid = (cfg.sideOffsetMin + cfg.sideOffsetMax) * 0.5;
       const zLen = cfg.zMax - cfg.zMin;
-
-      const wx = cx + Math.cos(yaw) * latMid;
-      const wz = zMid - Math.sin(yaw) * latMid;
-
       const tex = this.createConveyorTexture(cfg.isBoost);
       tex.repeat.set(1, zLen * 0.45);
 
-      const mesh = new THREE.Mesh(
-        new THREE.PlaneGeometry(width, zLen / Math.cos(TRACK_SLOPE)),
-        new THREE.MeshBasicMaterial({ map: tex, side: THREE.DoubleSide })
+      // Curved vertex-aligned strip mesh so it NEVER sinks below the sloped floor!
+      const stripGeo = this.createCurvedFloorStripGeometry(
+        cfg.zMin,
+        cfg.zMax,
+        cfg.sideOffsetMin,
+        cfg.sideOffsetMax,
+        0.09,
+        12
       );
-      mesh.position.set(wx, yMid, wz);
-      mesh.rotation.order = 'YXZ';
-      mesh.rotation.y = yaw;
-      mesh.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
+      const stripMat = new THREE.MeshBasicMaterial({
+        map: tex,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      });
+      const mesh = new THREE.Mesh(stripGeo, stripMat);
       this.courseGroup.add(mesh);
 
       this.conveyors.push({
@@ -1141,39 +1510,31 @@ export class ObstacleCourse {
       });
     }
 
+    if (!includeFans) return;
+
     const fanConfigs = [
       { zMin: 75, zMax: 82, side: -1, dirX: 1, force: 34 },
       { zMin: 82.5, zMax: 89.5, side: 1, dirX: -1, force: 35 },
       { zMin: 90, zMax: 97, side: -1, dirX: 1, force: 34 },
     ];
 
-    const isTkd = this.mapTheme === 'TAEKWONDO';
-
     for (const fc of fanConfigs) {
       const zMid = (fc.zMin + fc.zMax) * 0.5;
       const cx = this.getTrackCenterX(zMid);
-      const yaw = this.getTrackYawAtZ(zMid);
       const yMid = this.getTrackHeightAtZ(zMid) + 2.3;
-      const xHousing = cx + Math.cos(yaw) * (fc.side * 9.8);
-      const zHousing = zMid - Math.sin(yaw) * (fc.side * 9.8);
+      const xHousing = cx + fc.side * 9.8;
 
       const housing = new THREE.Mesh(
         new THREE.CylinderGeometry(2.3, 2.3, 1.2, 24),
-        new THREE.MeshStandardMaterial({
-          color: isTkd ? 0xb91c1c : 0x0284c7,
-          roughness: 0.25,
-        })
+        new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25 })
       );
       housing.rotation.z = Math.PI / 2;
-      housing.position.set(xHousing, yMid, zHousing);
+      housing.position.set(xHousing, yMid, zMid);
       this.courseGroup.add(housing);
 
       const bladesGroup = new THREE.Group();
-      bladesGroup.position.set(xHousing - fc.side * 0.55, yMid, zHousing);
-      const bladeMat = new THREE.MeshStandardMaterial({
-        color: isTkd ? 0xfacc15 : 0xffffff,
-        roughness: 0.2,
-      });
+      bladesGroup.position.set(xHousing - fc.side * 0.55, yMid, zMid);
+      const bladeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
       for (let b = 0; b < 3; b++) {
         const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.6, 0.72), bladeMat);
         blade.rotation.x = (b * Math.PI) / 3;
@@ -1212,23 +1573,30 @@ export class ObstacleCourse {
     canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = isBoost ? '#10b981' : '#f43f5e';
+    const isTkd = this.mapTheme === 'TAEKWONDO';
+    ctx.fillStyle = isBoost
+      ? isTkd
+        ? '#2563eb'
+        : '#10b981'
+      : isTkd
+      ? '#dc2626'
+      : '#f43f5e';
     ctx.fillRect(0, 0, 128, 128);
 
-    ctx.strokeStyle = '#ffffff';
+    ctx.strokeStyle = isTkd ? '#fef08a' : '#ffffff';
     ctx.lineWidth = 14;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
     ctx.beginPath();
     if (isBoost) {
-      ctx.moveTo(24, 36);
-      ctx.lineTo(64, 88);
-      ctx.lineTo(104, 36);
-    } else {
       ctx.moveTo(24, 88);
       ctx.lineTo(64, 36);
       ctx.lineTo(104, 88);
+    } else {
+      ctx.moveTo(24, 36);
+      ctx.lineTo(64, 88);
+      ctx.lineTo(104, 36);
     }
     ctx.stroke();
 
@@ -1238,15 +1606,11 @@ export class ObstacleCourse {
     return tex;
   }
 
-  private buildZone4Bottleneck(): void {
-    const pConfigs = [
-      { z: 108, freq: 2.35, phase: 0, maxAngle: 0.92 },
-      { z: 115, freq: 2.6, phase: Math.PI, maxAngle: 0.92 },
-      { z: 121, freq: 2.8, phase: Math.PI * 0.5, maxAngle: 0.92 },
-    ];
-    const isTkd = this.mapTheme === 'TAEKWONDO';
-
-    for (const pc of pConfigs) {
+  private addSwingingPendulums(
+    configs: { z: number; freq: number; phase: number; maxAngle: number }[],
+    isTaekwondoSandbag: boolean
+  ): void {
+    for (const pc of configs) {
       const cx = this.getTrackCenterX(pc.z);
       const yaw = this.getTrackYawAtZ(pc.z);
       const floorY = this.getTrackHeightAtZ(pc.z);
@@ -1257,7 +1621,7 @@ export class ObstacleCourse {
       frameGroup.position.set(cx, floorY, pc.z);
       frameGroup.rotation.y = yaw;
       const frameMat = new THREE.MeshStandardMaterial({
-        color: isTkd ? 0x1e293b : 0xf8fafc,
+        color: isTaekwondoSandbag ? 0x1e293b : 0xf8fafc,
         roughness: 0.4,
       });
       for (const side of [-1, 1]) {
@@ -1281,17 +1645,31 @@ export class ObstacleCourse {
       rod.position.set(0, -armLength * 0.5, 0);
       pivotGroup.add(rod);
 
-      const hammerMesh = new THREE.Mesh(
-        new THREE.CylinderGeometry(1.05, 1.05, 2.2, 20),
-        new THREE.MeshStandardMaterial({
-          color: isTkd ? 0x1d4ed8 : 0xef4444,
-          roughness: 0.25,
-        })
-      );
-      hammerMesh.rotation.x = Math.PI / 2;
-      hammerMesh.position.set(0, -armLength, 0);
-      hammerMesh.castShadow = true;
-      pivotGroup.add(hammerMesh);
+      if (isTaekwondoSandbag) {
+        // Hanging vertical Heavy Taekwondo Punching Bag
+        const bag = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.95, 0.95, 2.7, 20),
+          new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.45 })
+        );
+        bag.position.set(0, -armLength, 0);
+        bag.castShadow = true;
+        const redStripe = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.98, 0.98, 0.55, 20),
+          new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.3 })
+        );
+        redStripe.position.set(0, -armLength, 0);
+        pivotGroup.add(bag, redStripe);
+      } else {
+        const hammerMesh = new THREE.Mesh(
+          new THREE.CylinderGeometry(1.05, 1.05, 2.2, 20),
+          new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.25 })
+        );
+        hammerMesh.rotation.x = Math.PI / 2;
+        hammerMesh.position.set(0, -armLength, 0);
+        hammerMesh.castShadow = true;
+        pivotGroup.add(hammerMesh);
+      }
+
       this.courseGroup.add(pivotGroup);
 
       const body = this.createBody(
@@ -1323,10 +1701,7 @@ export class ObstacleCourse {
     }
   }
 
-  private buildZone5FinishArch(): void {
-    const isTkd = this.mapTheme === 'TAEKWONDO';
-    this.createSweeper(126, 0, 5.2, 4.0, 2, isTkd ? 0x0f172a : 0x3b82f6);
-
+  private buildFinishArch(isTkd: boolean): void {
     const cx = this.getTrackCenterX(FINISH_Z);
     const yaw = this.getTrackYawAtZ(FINISH_Z);
     const finishY = this.getTrackHeightAtZ(FINISH_Z);
@@ -1337,17 +1712,30 @@ export class ObstacleCourse {
       2
     );
 
+    // Curved finish strip flush with the track floor
+    const finishStripGeo = this.createCurvedFloorStripGeometry(
+      FINISH_Z - 1.6,
+      FINISH_Z + 1.6,
+      -8.8,
+      8.8,
+      0.08,
+      4
+    );
+    const finishStrip = new THREE.Mesh(
+      finishStripGeo,
+      new THREE.MeshBasicMaterial({
+        map: checkTex,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      })
+    );
+    this.courseGroup.add(finishStrip);
+
     const finishGroup = new THREE.Group();
     finishGroup.position.set(cx, finishY, FINISH_Z);
     finishGroup.rotation.y = yaw;
-
-    const finishStrip = new THREE.Mesh(
-      new THREE.PlaneGeometry(18, 3.2),
-      new THREE.MeshBasicMaterial({ map: checkTex, side: THREE.DoubleSide })
-    );
-    finishStrip.position.set(0, 0.08, 0);
-    finishStrip.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
-    finishGroup.add(finishStrip);
 
     const archMat = new THREE.MeshStandardMaterial({
       color: isTkd ? 0x1e293b : 0xfacc15,
@@ -1379,15 +1767,23 @@ export class ObstacleCourse {
     this.startGateMesh.position.set(cx, baseY, z);
     this.startGateBody.setNextKinematicTranslation({ x: cx, y: baseY, z });
 
-    if (this.mysteryDoors.length > 0) {
-      const passableFlags = Array.from({ length: this.mysteryDoors.length }, (_, i) => i < 3);
-      for (let i = passableFlags.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [passableFlags[i], passableFlags[j]] = [passableFlags[j], passableFlags[i]];
-      }
+    // Re-shuffle passable doors per rowGroup so EVERY gate row always has passable doors!
+    const grouped = new Map<number, MysteryDoorData[]>();
+    for (const door of this.mysteryDoors) {
+      const list = grouped.get(door.rowGroup) || [];
+      list.push(door);
+      grouped.set(door.rowGroup, list);
+    }
 
-      this.mysteryDoors.forEach((door, idx) => {
-        door.isPassable = passableFlags[idx];
+    for (const doors of grouped.values()) {
+      const passableTarget = Math.max(2, Math.ceil(doors.length * 0.55));
+      const flags = Array.from({ length: doors.length }, (_, i) => i < passableTarget);
+      for (let i = flags.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [flags[i], flags[j]] = [flags[j], flags[i]];
+      }
+      doors.forEach((door, idx) => {
+        door.isPassable = flags[idx];
         door.isOpened = false;
         door.openAngle = 0;
         door.hitCooldowns.clear();
@@ -1466,7 +1862,73 @@ export class ObstacleCourse {
       }
     }
 
-    // 3. Mystery [?] Doors / Taekwondo Pinewood Breaking Boards
+    // 3. Sliding Taekwondo Shields
+    for (const sh of this.slidingShields) {
+      const cx = this.getTrackCenterX(sh.baseZ);
+      const curX = cx + Math.sin(this.elapsedTime * sh.freq + sh.phase) * sh.ampX;
+      const vx = curX - sh.lastX;
+      sh.lastX = curX;
+
+      sh.mesh.position.set(curX, sh.baseY, sh.baseZ);
+      sh.body.setNextKinematicTranslation({ x: curX, y: sh.baseY, z: sh.baseZ });
+
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = sh.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.55) continue;
+
+        const rPos = r.getPosition();
+        if (
+          Math.abs(rPos.x - curX) < sh.halfW + 0.55 &&
+          Math.abs(rPos.z - sh.baseZ) < sh.halfD + 0.65 &&
+          Math.abs(rPos.y - sh.baseY) < sh.halfH + 0.8
+        ) {
+          sh.hitCooldowns.set(r.id, this.elapsedTime);
+          const pushDirX = Math.sign(vx) || (rPos.x >= curX ? 1 : -1);
+          r.triggerRagdoll(
+            {
+              x: pushDirX * 36 + (Math.random() - 0.5) * 6,
+              y: 20 + Math.random() * 8,
+              z: -12,
+            },
+            undefined,
+            1.15
+          );
+          particles.spawnHitBurst(rPos, '#facc15', 10);
+          sound.playRagdollHit(1.15);
+        }
+      }
+    }
+
+    // 4. Taekwondo Vaulting Springboards (도약 발판)
+    for (const sb of this.springboards) {
+      const cx = this.getTrackCenterX(sb.z);
+      const wx = cx + sb.offsetX;
+      const wy = this.getTrackHeightAtZ(sb.z);
+
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = sb.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.9) continue;
+
+        const rPos = r.getPosition();
+        if (
+          Math.abs(rPos.x - wx) < sb.halfW &&
+          Math.abs(rPos.z - sb.z) < sb.halfL &&
+          rPos.y - wy < 1.8
+        ) {
+          sb.hitCooldowns.set(r.id, this.elapsedTime);
+          r.torsoBody.applyImpulse(
+            { x: (Math.random() - 0.5) * 6, y: sb.boostY, z: sb.boostZ },
+            true
+          );
+          particles.spawnHitBurst(rPos, '#facc15', 8);
+          sound.playBumperBounce();
+        }
+      }
+    }
+
+    // 5. Mystery / Pinewood / Roof-Tile Breaking Doors
     for (const door of this.mysteryDoors) {
       if (door.isOpened && door.openAngle < Math.PI * 0.48) {
         door.openAngle = Math.min(Math.PI * 0.48, door.openAngle + dt * 6.5);
@@ -1507,7 +1969,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 4. Pop-up Floor Bumpers
+    // 6. Pop-up Floor Bumpers
     for (const pb of this.popupBumpers) {
       const wave = Math.sin(this.elapsedTime * pb.freq + pb.phase);
       const popRatio = wave > 0.5 ? (wave - 0.5) * 2.0 : 0;
@@ -1543,7 +2005,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 5. Pinball Bumpers
+    // 7. Pinball / Slalom Posts
     for (const pin of this.pinballBumpers) {
       if (pin.pulseScale > 1.0) {
         pin.pulseScale = Math.max(1.0, pin.pulseScale - dt * 4.5);
@@ -1572,7 +2034,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 6. Conveyor Belts & Wind Fans
+    // 8. Conveyor / Poomsae Step Belts
     for (const conv of this.conveyors) {
       conv.texture.offset.y -= conv.speedZ * dt * 0.12;
       for (const r of racers) {
@@ -1590,6 +2052,7 @@ export class ObstacleCourse {
       }
     }
 
+    // 9. Wind Fans (Map 1)
     for (const fan of this.windFans) {
       fan.bladesMesh.rotation.x += dt * 16 * fan.dirX;
       const posAttr = fan.streamParticles.geometry.getAttribute(
@@ -1614,7 +2077,47 @@ export class ObstacleCourse {
       }
     }
 
-    // 7. Zone 4 Swinging Pendulums
+    // 10. Kiai Shockwave War Drums (Map 2)
+    for (const sd of this.shockwaveDrums) {
+      const cycle = ((this.elapsedTime * sd.freq * 0.45 + sd.phase) % 1 + 1) % 1;
+      const zMid = (sd.zMin + sd.zMax) * 0.5;
+      const cx = this.getTrackCenterX(zMid);
+      const yMid = this.getTrackHeightAtZ(zMid) + 1.8;
+      const waveX = cx + sd.side * 9.0 + sd.dirX * cycle * 18.0;
+
+      sd.waveMesh.position.set(waveX, yMid, zMid);
+      const scale = 0.8 + cycle * 1.1;
+      sd.waveMesh.scale.set(scale, scale, 1);
+      (sd.waveMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0.15, 1.0 - cycle);
+
+      const drumPulse = cycle < 0.15 ? 1.18 : 1.0;
+      sd.drumMesh.scale.set(drumPulse, drumPulse, drumPulse);
+
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = sd.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.75) continue;
+
+        const rPos = r.getPosition();
+        if (
+          rPos.z >= sd.zMin &&
+          rPos.z <= sd.zMax &&
+          Math.abs(rPos.x - waveX) < 1.8 &&
+          rPos.y - this.getTrackHeightAtZ(rPos.z) < 3.6
+        ) {
+          sd.hitCooldowns.set(r.id, this.elapsedTime);
+          r.triggerRagdoll(
+            { x: sd.dirX * 32, y: 16, z: -6 },
+            undefined,
+            0.95
+          );
+          particles.spawnHitBurst(rPos, '#facc15', 8);
+          sound.playRagdollHit(0.95);
+        }
+      }
+    }
+
+    // 11. Zone 4 Swinging Pendulums / Hanging Heavy Sandbags
     for (const pend of this.pendulums) {
       const swingAngle =
         Math.sin(this.elapsedTime * pend.freq + pend.phase) * pend.maxAngle;

@@ -71,11 +71,21 @@ class RagdollDerbyGame {
 
     const isMobile = this.isMobileViewport();
 
-    // 1. Bright Sunny Daylight Three.js Scene (IMG_2317 style!)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('map')?.toUpperCase() === 'TAEKWONDO') {
+      this.mapTheme = 'TAEKWONDO';
+    }
+
+    // 1. Bright Sunny Daylight Three.js Scene
     const container = document.getElementById('canvas-container')!;
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color('#cce7ff');
-    this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
+    if (this.mapTheme === 'TAEKWONDO') {
+      this.scene.background = new THREE.Color('#fde68a');
+      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
+    } else {
+      this.scene.background = new THREE.Color('#cce7ff');
+      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
+    }
 
     const camera = new THREE.PerspectiveCamera(
       isMobile ? 66 : 56,
@@ -128,6 +138,7 @@ class RagdollDerbyGame {
 
     // 4. Bind UI Events & Spawn Initial Racers
     this.bindUIEvents();
+    this.syncMapThemeUI();
     this.rebuildRacersFromInput();
 
     const handleResize = () => {
@@ -143,25 +154,7 @@ class RagdollDerbyGame {
     requestAnimationFrame((now) => this.animate(now));
   }
 
-  private switchMapTheme(newTheme: MapTheme): void {
-    if (this.countdownTimer !== null) {
-      clearInterval(this.countdownTimer);
-      this.countdownTimer = null;
-      document.getElementById('countdown-overlay')!.classList.add('hidden');
-    }
-
-    this.mapTheme = newTheme;
-
-    // Update sky & fog colors for the selected theme
-    if (this.mapTheme === 'TAEKWONDO') {
-      this.scene.background = new THREE.Color('#fde68a');
-      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
-    } else {
-      this.scene.background = new THREE.Color('#cce7ff');
-      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
-    }
-
-    // Update UI buttons
+  private syncMapThemeUI(): void {
     document.querySelectorAll<HTMLButtonElement>('.map-btn').forEach((btn) => {
       btn.classList.toggle('active', btn.dataset.map === this.mapTheme);
     });
@@ -172,8 +165,27 @@ class RagdollDerbyGame {
         this.mapTheme === 'TAEKWONDO' ? '🗺️ 맵2: 🥋 태권도' : '🗺️ 맵1: 🏫 운동장';
       quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
     }
+  }
 
-    // Rebuild 3D Course and Racers
+  private switchMapTheme(newTheme: MapTheme): void {
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+      document.getElementById('countdown-overlay')!.classList.add('hidden');
+    }
+
+    this.mapTheme = newTheme;
+
+    if (this.mapTheme === 'TAEKWONDO') {
+      this.scene.background = new THREE.Color('#fde68a');
+      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
+    } else {
+      this.scene.background = new THREE.Color('#cce7ff');
+      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
+    }
+
+    this.syncMapThemeUI();
+
     this.course.dispose();
     this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
     this.rebuildRacersFromInput();
