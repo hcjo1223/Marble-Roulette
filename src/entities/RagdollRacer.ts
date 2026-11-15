@@ -341,13 +341,14 @@ export class RagdollRacer {
       this.selectionRing
     );
 
-    // 6. Billboard Nickname UI Sprite
+    // 6. Billboard Nickname UI Sprite (High-contrast & crisp on PC/Mobile)
     this.labelCanvas = document.createElement('canvas');
-    this.labelCanvas.width = 320;
-    this.labelCanvas.height = 84;
+    this.labelCanvas.width = 440;
+    this.labelCanvas.height = 120;
     this.labelCtx = this.labelCanvas.getContext('2d')!;
     this.labelTexture = new THREE.CanvasTexture(this.labelCanvas);
     this.labelTexture.minFilter = THREE.LinearFilter;
+    this.labelTexture.magFilter = THREE.LinearFilter;
     const spriteMat = new THREE.SpriteMaterial({
       map: this.labelTexture,
       transparent: true,
@@ -355,7 +356,7 @@ export class RagdollRacer {
       toneMapped: false,
     });
     this.labelSprite = new THREE.Sprite(spriteMat);
-    this.labelSprite.scale.set(1.78, 0.48, 1);
+    this.labelSprite.scale.set(2.45, 0.68, 1);
     this.labelSprite.renderOrder = 999;
     scene.add(this.labelSprite);
 
@@ -449,44 +450,13 @@ export class RagdollRacer {
     this.lastRenderedHighlight = this.isTargetRankCandidate;
 
     const ctx = this.labelCtx;
-    ctx.clearRect(0, 0, 320, 84);
+    ctx.clearRect(0, 0, 440, 120);
 
-    // Crisp bright white pill tag (IMG_2317.jpeg style!)
+    // High-contrast crisp pill tag for clear PC & mobile readability
     const isHit = this.state === 'RAGDOLL';
     const isHighlight = this.isTargetRankCandidate;
 
-    ctx.fillStyle = isHit
-      ? '#fef2f2'
-      : isHighlight
-      ? '#fef08a'
-      : 'rgba(255, 255, 255, 0.96)';
-    ctx.strokeStyle = isHit ? '#ef4444' : isHighlight ? '#d97706' : '#1e293b';
-    ctx.lineWidth = isHighlight ? 5 : 4;
-
-    const rx = 18;
-    const ry = 12;
-    const rw = 284;
-    const rh = 58;
-    const radius = 28;
-
-    ctx.beginPath();
-    ctx.roundRect(rx, ry, rw, rh, radius);
-    ctx.fill();
-    ctx.stroke();
-
-    // Colored circle dot / rank badge
-    ctx.fillStyle = this.color;
-    ctx.beginPath();
-    ctx.roundRect(rx + 8, ry + 8, 52, 42, 20);
-    ctx.fill();
-
-    ctx.fillStyle = '#ffffff';
-    ctx.font = '800 24px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(`#${this.rank}`, rx + 34, ry + 30);
-
-    // Name text (dark slate on crisp white pill)
+    // Bold name text auto-fitted inside compact centered pill
     const statusIcon =
       this.state === 'RAGDOLL'
         ? ' 💫'
@@ -496,12 +466,55 @@ export class RagdollRacer {
         ? ' 🎯'
         : '';
     const displayText =
-      (this.name.length > 7 ? this.name.slice(0, 7) + '…' : this.name) + statusIcon;
+      (this.name.length > 8 ? this.name.slice(0, 8) + '…' : this.name) + statusIcon;
+
+    let fontSize = 44;
+    ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", "Pretendard", sans-serif`;
+    const maxTextWidth = 286;
+    let textWidth = ctx.measureText(displayText).width;
+    while (fontSize > 28 && textWidth > maxTextWidth) {
+      fontSize -= 2;
+      ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", "Pretendard", sans-serif`;
+      textWidth = ctx.measureText(displayText).width;
+    }
+
+    const badgeW = 78;
+    const rw = Math.min(424, Math.max(206, 26 + badgeW + textWidth + 24));
+    const rh = 94;
+    const rx = (440 - rw) * 0.5;
+    const ry = 13;
+    const radius = 44;
+
+    ctx.fillStyle = isHit
+      ? '#fee2e2'
+      : isHighlight
+      ? '#fef08a'
+      : '#ffffff';
+    ctx.strokeStyle = isHit ? '#dc2626' : isHighlight ? '#d97706' : '#0f172a';
+    ctx.lineWidth = isHighlight ? 7 : 6;
+
+    ctx.beginPath();
+    ctx.roundRect(rx, ry, rw, rh, radius);
+    ctx.fill();
+    ctx.stroke();
+
+    // Colored rank badge
+    ctx.fillStyle = this.color;
+    ctx.beginPath();
+    ctx.roundRect(rx + 10, ry + 10, badgeW, 74, 34);
+    ctx.fill();
+
+    ctx.fillStyle = '#ffffff';
+    ctx.font = '900 34px "Plus Jakarta Sans", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(`#${this.rank}`, rx + 10 + badgeW * 0.5, ry + 48);
 
     ctx.fillStyle = '#0f172a';
-    ctx.font = '800 28px "Plus Jakarta Sans", "Pretendard", sans-serif';
+    ctx.font = `900 ${fontSize}px "Plus Jakarta Sans", "Pretendard", sans-serif`;
     ctx.textAlign = 'left';
-    ctx.fillText(displayText, rx + 68, ry + 30);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(displayText, rx + 10 + badgeW + 12, ry + 48);
 
     this.labelTexture.needsUpdate = true;
   }
@@ -872,7 +885,7 @@ export class RagdollRacer {
     this.updateBillboardLabel(true);
   }
 
-  public syncVisuals(isFocused: boolean): void {
+  public syncVisuals(isFocused: boolean, cameraPos?: THREE.Vector3): void {
     const syncMeshToBody = (mesh: THREE.Mesh, body: RAPIER.RigidBody) => {
       const p = body.translation();
       const r = body.rotation();
@@ -909,8 +922,25 @@ export class RagdollRacer {
     syncMeshToBody(this.leftLegMesh, this.leftLegBody);
     syncMeshToBody(this.rightLegMesh, this.rightLegBody);
 
-    // Position billboard sprite above character
-    this.labelSprite.position.set(torsoPos.x, torsoPos.y + 1.85, torsoPos.z);
+    // Distance-compensated billboard sprite scale so names are clearly readable on PC & mobile
+    const camDist = cameraPos
+      ? Math.hypot(
+          cameraPos.x - torsoPos.x,
+          cameraPos.y - torsoPos.y,
+          cameraPos.z - torsoPos.z
+        )
+      : 14;
+    const distScale = Math.max(0.95, Math.min(2.15, camDist / 13.2));
+    this.labelSprite.scale.set(2.3 * distScale, 0.65 * distScale, 1);
+    this.labelSprite.position.set(
+      torsoPos.x,
+      torsoPos.y + 1.78 + distScale * 0.22,
+      torsoPos.z
+    );
+    this.labelSprite.renderOrder =
+      isFocused || this.isTargetRankCandidate
+        ? 1500
+        : Math.max(100, 1200 - Math.round(camDist * 8));
 
     // Selection ring for focused racer or target rank candidate
     this.selectionRing.visible = isFocused || this.isTargetRankCandidate;

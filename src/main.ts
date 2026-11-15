@@ -811,7 +811,10 @@ class RagdollDerbyGame {
     });
 
     for (const r of this.racers) {
-      r.syncVisuals(this.cameraDirector.focusedRacerId === r.id);
+      r.syncVisuals(
+        this.cameraDirector.focusedRacerId === r.id,
+        this.cameraDirector.camera.position
+      );
     }
 
     if (this.sortedRacers.length > 0) {
