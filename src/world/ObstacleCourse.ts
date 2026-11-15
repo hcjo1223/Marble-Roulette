@@ -1866,25 +1866,27 @@ export class ObstacleCourse {
     halfW: number = 1.65,
     halfL: number = 2.6
   ): void {
-    const cx = this.getTrackCenterX(z);
-    const wx = cx + offsetX;
-    const wy = this.getTrackHeightAtZ(z) + 0.09;
-
     const canvas = document.createElement('canvas');
     canvas.width = 128;
     canvas.height = 128;
     const ctx = canvas.getContext('2d')!;
     ctx.fillStyle = '#ea580c';
     ctx.fillRect(0, 0, 128, 128);
+    // Bright neon yellow side trim rails
+    ctx.fillStyle = '#facc15';
+    ctx.fillRect(0, 0, 10, 128);
+    ctx.fillRect(118, 0, 10, 128);
+
+    // Chevrons pointing toward Canvas y = 0 (v = 1 -> +Z forward along curved strip)
     ctx.strokeStyle = '#fef08a';
-    ctx.lineWidth = 16;
+    ctx.lineWidth = 15;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
-    for (const cy of [46, 98]) {
+    for (const cy of [42, 98]) {
       ctx.beginPath();
-      ctx.moveTo(22, cy + 20);
-      ctx.lineTo(64, cy - 22);
-      ctx.lineTo(106, cy + 20);
+      ctx.moveTo(24, cy + 20);
+      ctx.lineTo(64, cy - 20);
+      ctx.lineTo(104, cy + 20);
       ctx.stroke();
     }
     const tex = new THREE.CanvasTexture(canvas);
@@ -1892,12 +1894,24 @@ export class ObstacleCourse {
     tex.wrapT = THREE.RepeatWrapping;
     tex.repeat.set(1, 2);
 
-    const mesh = new THREE.Mesh(
-      new THREE.BoxGeometry(halfW * 2, 0.14, halfL * 2),
-      new THREE.MeshBasicMaterial({ map: tex })
+    const stripGeo = this.createCurvedFloorStripGeometry(
+      z - halfL,
+      z + halfL,
+      offsetX - halfW,
+      offsetX + halfW,
+      0.11,
+      8
     );
-    mesh.position.set(wx, wy, z);
-    mesh.rotation.x = TRACK_SLOPE;
+    const mesh = new THREE.Mesh(
+      stripGeo,
+      new THREE.MeshBasicMaterial({
+        map: tex,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      })
+    );
     this.courseGroup.add(mesh);
 
     this.turboPads.push({
@@ -4013,17 +4027,18 @@ export class ObstacleCourse {
       pad.texture.offset.y -= dt * 2.4;
       if (!isRacing) continue;
 
-      const padX = this.getTrackCenterX(pad.z) + pad.offsetX;
-      const padY = this.getTrackHeightAtZ(pad.z);
       for (const r of racers) {
         if (r.state === 'FINISHED') continue;
         const lastHit = pad.hitCooldowns.get(r.id) || 0;
         if (this.elapsedTime - lastHit < 0.75) continue;
 
         const rPos = r.getPosition();
+        if (Math.abs(rPos.z - pad.z) >= pad.halfL + 0.55) continue;
+
+        const padX = this.getTrackCenterX(rPos.z) + pad.offsetX;
+        const padY = this.getTrackHeightAtZ(rPos.z);
         if (
           Math.abs(rPos.x - padX) < pad.halfW + 0.55 &&
-          Math.abs(rPos.z - pad.z) < pad.halfL + 0.55 &&
           Math.abs(rPos.y - padY) < 1.9
         ) {
           pad.hitCooldowns.set(r.id, this.elapsedTime);
