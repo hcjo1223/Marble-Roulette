@@ -15,6 +15,7 @@ export class RagdollRacer {
   public readonly name: string;
   public readonly color: string;
   public readonly accentColor: string;
+  public readonly isKartMode: boolean;
 
   public state: RacerState = 'WAITING';
   public rank: number = 1;
@@ -48,6 +49,8 @@ export class RagdollRacer {
   public leftLegMesh: THREE.Mesh;
   public rightLegMesh: THREE.Mesh;
   public selectionRing: THREE.Mesh;
+  private kartWheels: THREE.Mesh[] = [];
+  private kartFlameMesh: THREE.Mesh | null = null;
 
   // Face Texture & Billboard Sprite
   private faceCanvas: HTMLCanvasElement;
@@ -62,6 +65,7 @@ export class RagdollRacer {
   private lastRenderedRank: number = -1;
   private lastRenderedState: RacerState = 'WAITING';
   private lastRenderedHighlight: boolean = false;
+  private lastRenderedBuff: 'NONE' | 'SLOW' | 'TURBO' = 'NONE';
 
   // Autonomous Steering & Randomness Parameters
   private baseSpeed: number;
@@ -77,6 +81,10 @@ export class RagdollRacer {
   private stuckTimer: number = 0;
   private lastProgressZ: number = 0;
   private elapsedTime: number = 0;
+  private slowDebuffTimer: number = 0;
+  private slowFactor: number = 1.0;
+  private turboTimer: number = 0;
+  private turboBonus: number = 0;
 
   constructor(
     entry: ParticipantEntry,
@@ -90,16 +98,19 @@ export class RagdollRacer {
     this.name = entry.name;
     this.color = entry.color;
     this.accentColor = entry.accentColor;
+    this.isKartMode = mapTheme === 'DINOSAUR';
     this.world = world;
     this.scene = scene;
     this.rank = index + 1;
 
-    // Autonomous AI individual traits
-    this.baseSpeed = 10.6 + Math.random() * 1.4;
+    // Autonomous AI individual traits (Kart mode races substantially faster!)
+    this.baseSpeed = this.isKartMode
+      ? 18.0 + Math.random() * 2.1
+      : 10.6 + Math.random() * 1.4;
     this.wanderPhase1 = Math.random() * Math.PI * 2;
     this.wanderPhase2 = Math.random() * Math.PI * 2;
-    this.wanderFreq1 = 1.1 + Math.random() * 0.9;
-    this.wanderFreq2 = 2.3 + Math.random() * 1.2;
+    this.wanderFreq1 = (this.isKartMode ? 1.35 : 1.1) + Math.random() * 0.9;
+    this.wanderFreq2 = (this.isKartMode ? 2.6 : 2.3) + Math.random() * 1.2;
     this.preferredLaneOffset = (Math.random() - 0.5) * 8.5;
     this.runCyclePhase = Math.random() * Math.PI * 2;
     this.jumpCooldown = 1.2 + Math.random() * 2.4;
@@ -289,6 +300,10 @@ export class RagdollRacer {
       this.torsoMesh.add(chestBadge);
     }
 
+    if (isDinosaur) {
+      this.buildKartVehicleOnTorso();
+    }
+
     // Head mesh (6 materials so +Z front has face)
     const headMats = [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat];
     this.headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.54, 0.54), headMats);
@@ -450,24 +465,176 @@ export class RagdollRacer {
     this.faceTexture.needsUpdate = true;
   }
 
+  private buildKartVehicleOnTorso(): void {
+    const bodyMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(this.color),
+      roughness: 0.28,
+      metalness: 0.18,
+    });
+    const accentMat = new THREE.MeshStandardMaterial({
+      color: new THREE.Color(this.accentColor),
+      roughness: 0.35,
+    });
+    const bumperMat = new THREE.MeshStandardMaterial({
+      color: 0xfacc15,
+      roughness: 0.3,
+    });
+    const seatMat = new THREE.MeshStandardMaterial({
+      color: 0x1e293b,
+      roughness: 0.7,
+    });
+    const tireMat = new THREE.MeshStandardMaterial({
+      color: 0x111827,
+      roughness: 0.8,
+    });
+    const hubMat = new THREE.MeshStandardMaterial({
+      color: 0xfef08a,
+      roughness: 0.25,
+      metalness: 0.4,
+    });
+    const metalMat = new THREE.MeshStandardMaterial({
+      color: 0x94a3b8,
+      roughness: 0.3,
+      metalness: 0.6,
+    });
+
+    // Main racing kart chassis
+    const chassis = new THREE.Mesh(new THREE.BoxGeometry(1.18, 0.28, 1.72), bodyMat);
+    chassis.position.set(0, -0.58, 0.08);
+    chassis.castShadow = true;
+    this.torsoMesh.add(chassis);
+
+    // Side pods & white/gold racing stripe
+    const sidePodL = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 1.05), accentMat);
+    sidePodL.position.set(-0.62, -0.54, 0.04);
+    const sidePodR = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.22, 1.05), accentMat);
+    sidePodR.position.set(0.62, -0.54, 0.04);
+    const hoodStripe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.3, 0.9), bumperMat);
+    hoodStripe.position.set(0, -0.56, 0.56);
+    this.torsoMesh.add(sidePodL, sidePodR, hoodStripe);
+
+    // Front racing bumper
+    const frontNose = new THREE.Mesh(new THREE.BoxGeometry(1.06, 0.22, 0.42), bumperMat);
+    frontNose.position.set(0, -0.58, 1.02);
+    frontNose.castShadow = true;
+    this.torsoMesh.add(frontNose);
+
+    // Seat back cushion behind torso
+    const seatBack = new THREE.Mesh(new THREE.BoxGeometry(0.66, 0.44, 0.16), seatMat);
+    seatBack.position.set(0, -0.32, -0.34);
+    this.torsoMesh.add(seatBack);
+
+    // Rear spoiler wing on twin struts
+    for (const sx of [-0.42, 0.42]) {
+      const strut = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.34, 0.12), seatMat);
+      strut.position.set(sx, -0.34, -0.76);
+      this.torsoMesh.add(strut);
+    }
+    const wing = new THREE.Mesh(new THREE.BoxGeometry(1.26, 0.1, 0.34), accentMat);
+    wing.position.set(0, -0.15, -0.78);
+    wing.castShadow = true;
+    this.torsoMesh.add(wing);
+
+    // Twin chrome exhaust pipes + turbo flame cone (visible during turbo!)
+    for (const ex of [-0.28, 0.28]) {
+      const pipe = new THREE.Mesh(new THREE.CylinderGeometry(0.08, 0.1, 0.36, 10), metalMat);
+      pipe.rotation.x = Math.PI * 0.44;
+      pipe.position.set(ex, -0.45, -0.84);
+      this.torsoMesh.add(pipe);
+    }
+    const flameMat = new THREE.MeshBasicMaterial({
+      color: 0xf97316,
+      transparent: true,
+      opacity: 0.92,
+    });
+    const flame = new THREE.Mesh(new THREE.ConeGeometry(0.24, 0.9, 10), flameMat);
+    flame.rotation.x = -Math.PI * 0.5;
+    flame.position.set(0, -0.46, -1.38);
+    flame.visible = false;
+    this.torsoMesh.add(flame);
+    this.kartFlameMesh = flame;
+
+    // Steering column & wheel in front of driver
+    const column = new THREE.Mesh(new THREE.CylinderGeometry(0.05, 0.05, 0.54, 8), seatMat);
+    column.rotation.x = 0.52;
+    column.position.set(0, -0.24, 0.46);
+    const wheel = new THREE.Mesh(new THREE.TorusGeometry(0.18, 0.045, 8, 16), seatMat);
+    wheel.rotation.x = 0.52;
+    wheel.position.set(0, 0.0, 0.36);
+    this.torsoMesh.add(column, wheel);
+
+    // 4 Knobby Racing Tires with bright hubcaps
+    const wheelPositions: [number, number, number][] = [
+      [-0.66, -0.76, 0.62],
+      [0.66, -0.76, 0.62],
+      [-0.68, -0.76, -0.56],
+      [0.68, -0.76, -0.56],
+    ];
+    for (const [wx, wy, wz] of wheelPositions) {
+      const tire = new THREE.Mesh(new THREE.CylinderGeometry(0.29, 0.29, 0.24, 14), tireMat);
+      tire.rotation.z = Math.PI * 0.5;
+      tire.position.set(wx, wy, wz);
+      tire.castShadow = true;
+
+      const hub = new THREE.Mesh(new THREE.CylinderGeometry(0.15, 0.15, 0.26, 10), hubMat);
+      tire.add(hub);
+
+      this.torsoMesh.add(tire);
+      this.kartWheels.push(tire);
+    }
+  }
+
+  public applySlowDebuff(duration: number = 2.4, factor: number = 0.44): void {
+    if (this.state === 'FINISHED') return;
+    this.slowDebuffTimer = Math.max(this.slowDebuffTimer, duration);
+    this.slowFactor = Math.min(this.slowFactor, factor);
+    const vel = this.torsoBody.linvel();
+    this.torsoBody.setLinvel({ x: vel.x * 0.6, y: vel.y, z: vel.z * 0.55 }, true);
+    this.updateBillboardLabel();
+  }
+
+  public applyTurboBoost(duration: number = 1.65, bonus: number = 13.0): void {
+    if (this.state === 'FINISHED') return;
+    this.turboTimer = Math.max(this.turboTimer, duration);
+    this.turboBonus = Math.max(this.turboBonus, bonus);
+    this.slowDebuffTimer = 0;
+    this.slowFactor = 1.0;
+    this.torsoBody.applyImpulse({ x: 0, y: 1.5, z: 22 }, true);
+    this.updateBillboardLabel();
+  }
+
+  public isSlowed(): boolean {
+    return this.slowDebuffTimer > 0;
+  }
+
+  public isBoosted(): boolean {
+    return this.turboTimer > 0;
+  }
+
   public updateBillboardLabel(force: boolean = false): void {
+    const buffState: 'NONE' | 'SLOW' | 'TURBO' =
+      this.slowDebuffTimer > 0 ? 'SLOW' : this.turboTimer > 0 ? 'TURBO' : 'NONE';
     if (
       !force &&
       this.lastRenderedRank === this.rank &&
       this.lastRenderedState === this.state &&
-      this.lastRenderedHighlight === this.isTargetRankCandidate
+      this.lastRenderedHighlight === this.isTargetRankCandidate &&
+      this.lastRenderedBuff === buffState
     ) {
       return;
     }
     this.lastRenderedRank = this.rank;
     this.lastRenderedState = this.state;
     this.lastRenderedHighlight = this.isTargetRankCandidate;
+    this.lastRenderedBuff = buffState;
 
     const ctx = this.labelCtx;
     ctx.clearRect(0, 0, 440, 120);
 
     // High-contrast crisp pill tag for clear PC & mobile readability
     const isHit = this.state === 'RAGDOLL';
+    const isSlow = buffState === 'SLOW';
+    const isTurbo = buffState === 'TURBO';
     const isHighlight = this.isTargetRankCandidate;
 
     // Bold name text auto-fitted inside compact centered pill
@@ -476,6 +643,10 @@ export class RagdollRacer {
         ? ' 💫'
         : this.state === 'FINISHED'
         ? ' 👑'
+        : isSlow
+        ? ' 💩'
+        : isTurbo
+        ? ' ⚡'
         : isHighlight
         ? ' 🎯'
         : '';
@@ -501,11 +672,23 @@ export class RagdollRacer {
 
     ctx.fillStyle = isHit
       ? '#fee2e2'
+      : isSlow
+      ? '#fef3c7'
+      : isTurbo
+      ? '#ffedd5'
       : isHighlight
       ? '#fef08a'
       : '#ffffff';
-    ctx.strokeStyle = isHit ? '#dc2626' : isHighlight ? '#d97706' : '#0f172a';
-    ctx.lineWidth = isHighlight ? 7 : 6;
+    ctx.strokeStyle = isHit
+      ? '#dc2626'
+      : isSlow
+      ? '#854d0e'
+      : isTurbo
+      ? '#ea580c'
+      : isHighlight
+      ? '#d97706'
+      : '#0f172a';
+    ctx.lineWidth = isHighlight || isSlow || isTurbo ? 7 : 6;
 
     ctx.beginPath();
     ctx.roundRect(rx, ry, rw, rh, radius);
@@ -617,6 +800,10 @@ export class RagdollRacer {
 
     this.state = 'RUNNING';
     this.ragdollTimer = 0;
+    this.slowDebuffTimer = 0;
+    this.slowFactor = 1.0;
+    this.turboTimer = 0;
+    this.turboBonus = 0;
     this.drawFaceTexture('NORMAL');
     this.updateBillboardLabel();
   }
@@ -628,11 +815,40 @@ export class RagdollRacer {
     trackHalfWidthAtZ: (z: number) => number,
     trackHeightAtZ: (z: number) => number,
     onJumpCallback?: () => void,
-    onRespawnCallback?: (pos: THREE.Vector3) => void
+    onRespawnCallback?: (pos: THREE.Vector3) => void,
+    finishZ: number = 132
   ): void {
     this.elapsedTime += dt;
     const pos = this.torsoBody.translation();
     const vel = this.torsoBody.linvel();
+
+    if (this.slowDebuffTimer > 0) {
+      this.slowDebuffTimer = Math.max(0, this.slowDebuffTimer - dt);
+      if (this.slowDebuffTimer === 0) {
+        this.slowFactor = 1.0;
+      }
+    }
+    if (this.turboTimer > 0) {
+      this.turboTimer = Math.max(0, this.turboTimer - dt);
+      if (this.turboTimer === 0) {
+        this.turboBonus = 0;
+      }
+    }
+
+    if (this.isKartMode) {
+      const wheelSpin = Math.max(0, vel.z) * dt * 3.4;
+      for (const w of this.kartWheels) {
+        w.rotation.x += wheelSpin;
+      }
+      if (this.kartFlameMesh) {
+        const showFlame = this.turboTimer > 0 && this.state === 'RUNNING';
+        this.kartFlameMesh.visible = showFlame;
+        if (showFlame) {
+          const pulse = 0.85 + Math.sin(this.elapsedTime * 32) * 0.25;
+          this.kartFlameMesh.scale.set(1, pulse, 1);
+        }
+      }
+    }
 
     if (this.state === 'WAITING') {
       this.maintainUprightPose(0, dt, 0.4);
@@ -642,8 +858,9 @@ export class RagdollRacer {
     if (this.state === 'FINISHED') {
       // Celebratory hops & gentle slowdown inside the walled finish zone
       const expectedFinishY = trackHeightAtZ(pos.z);
-      if (pos.y < expectedFinishY - 2.0 || pos.z > 147.0) {
-        const safeFinishZ = 138.0;
+      const trackEndZ = finishZ + 15.0;
+      if (pos.y < expectedFinishY - 2.0 || pos.z > trackEndZ) {
+        const safeFinishZ = finishZ + 6.0;
         const safeFinishCX = trackCenterXAtZ(safeFinishZ);
         this.teleportTo(
           new THREE.Vector3(
@@ -663,7 +880,7 @@ export class RagdollRacer {
         {
           x: -vel.x * 2.5 * dt,
           y: 0,
-          z: (pos.z > 144.5 ? -vel.z * 5.0 - 8.0 : -vel.z * 2.8) * dt,
+          z: (pos.z > finishZ + 12.5 ? -vel.z * 5.0 - 8.0 : -vel.z * 2.8) * dt,
         },
         true
       );
@@ -679,15 +896,16 @@ export class RagdollRacer {
     const lateralDist = Math.abs(pos.x - centerX);
     const expectedFloorY = trackHeightAtZ(pos.z);
 
-    const inLastSection = pos.z >= 98;
+    const lastSectionStartZ = finishZ - 34;
+    const inLastSection = pos.z >= lastSectionStartZ;
     const isOffSide = lateralDist > halfWidth + 0.95;
     const isFallen = inLastSection
       ? pos.y < expectedFloorY - 2.2
       : pos.y < expectedFloorY - 8.5;
 
     if (isFallen || isOffSide) {
-      // If knocked off in the last section (Zone 4-5), move racer back to start of last section (Z = 100.0)
-      const safeZ = inLastSection ? 100.0 : Math.max(4, pos.z - 4);
+      // If knocked off in the last section, move racer back to start of last section
+      const safeZ = inLastSection ? finishZ - 32 : Math.max(4, pos.z - 4);
       const safeCX = trackCenterXAtZ(safeZ);
       const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
       const respawnPos = new THREE.Vector3(
@@ -723,8 +941,8 @@ export class RagdollRacer {
     }
 
     // Autonomous RUNNING Steering + Randomness along curved track!
-    const lookAheadCenterX = trackCenterXAtZ(pos.z + 5.0);
-    const safeHalfWidth = Math.max(2.2, halfWidth - 1.3);
+    const lookAheadCenterX = trackCenterXAtZ(pos.z + (this.isKartMode ? 7.0 : 5.0));
+    const safeHalfWidth = Math.max(2.2, halfWidth - 1.35);
 
     // Sinusoidal wander + lane preference relative to curved track center
     const wanderOffset =
@@ -739,18 +957,24 @@ export class RagdollRacer {
     // Rubber-banding comeback factor (trailing racers get a subtle adrenaline boost)
     const rankRatio = totalRacers > 1 ? (this.rank - 1) / (totalRacers - 1) : 0;
     const comebackMultiplier = 1.0 + rankRatio * 0.19;
-    const desiredForwardSpeed = this.baseSpeed * comebackMultiplier;
-    const desiredLateralSpeed = Math.max(-8.0, Math.min(8.0, lateralError * 2.2));
+    const activeSlow = this.slowDebuffTimer > 0 ? this.slowFactor : 1.0;
+    const activeTurbo = this.turboTimer > 0 ? this.turboBonus : 0;
+    const desiredForwardSpeed = (this.baseSpeed * comebackMultiplier + activeTurbo) * activeSlow;
+    const maxLat = this.isKartMode ? 11.0 : 8.0;
+    const desiredLateralSpeed = Math.max(
+      -maxLat,
+      Math.min(maxLat, lateralError * (this.isKartMode ? 2.8 : 2.2))
+    );
 
     // Apply steering force to reach desired velocity
-    const forceZ = (desiredForwardSpeed - vel.z) * 16.5;
-    const forceX = (desiredLateralSpeed - vel.x) * 14.5;
+    const forceZ = (desiredForwardSpeed - vel.z) * (this.isKartMode ? 20.0 : 16.5);
+    const forceX = (desiredLateralSpeed - vel.x) * (this.isKartMode ? 17.5 : 14.5);
 
     this.torsoBody.applyImpulse(
       {
         x: forceX * dt,
         y: 0,
-        z: Math.max(-10, Math.min(28, forceZ)) * dt,
+        z: Math.max(-18, Math.min(this.isKartMode ? 52 : 28, forceZ)) * dt,
       },
       true
     );
@@ -760,22 +984,24 @@ export class RagdollRacer {
     const currentSpeed = Math.hypot(vel.x, vel.z);
     this.maintainUprightPose(yawAngle, dt, currentSpeed);
 
-    // Cute bouncy "총총" running hop + random obstacle jump
-    this.jumpCooldown -= dt;
-    const nearGround = pos.y - expectedFloorY < 2.15 && Math.abs(vel.y) < 2.2;
-    if (this.jumpCooldown <= 0 && nearGround) {
-      this.jumpCooldown = 1.4 + Math.random() * 2.4;
-      const jumpImpulseY = 18 + Math.random() * 8;
-      this.torsoBody.applyImpulse(
-        {
-          x: (Math.random() - 0.5) * 4,
-          y: jumpImpulseY,
-          z: 5,
-        },
-        true
-      );
-      if (onJumpCallback && Math.random() < 0.3) {
-        onJumpCallback();
+    // Cute bouncy "총총" running hop (disabled in kart mode so karts stay glued fast to track)
+    if (!this.isKartMode) {
+      this.jumpCooldown -= dt;
+      const nearGround = pos.y - expectedFloorY < 2.15 && Math.abs(vel.y) < 2.2;
+      if (this.jumpCooldown <= 0 && nearGround) {
+        this.jumpCooldown = 1.4 + Math.random() * 2.4;
+        const jumpImpulseY = 18 + Math.random() * 8;
+        this.torsoBody.applyImpulse(
+          {
+            x: (Math.random() - 0.5) * 4,
+            y: jumpImpulseY,
+            z: 5,
+          },
+          true
+        );
+        if (onJumpCallback && Math.random() < 0.3) {
+          onJumpCallback();
+        }
       }
     }
 
@@ -790,7 +1016,7 @@ export class RagdollRacer {
       }
     }
 
-    // Anti-stuck emergency hop if blocked by a wall or mystery door
+    // Anti-stuck emergency hop if blocked by a wall or obstacle
     if (Math.abs(pos.z - this.lastProgressZ) < 0.35) {
       this.stuckTimer += dt;
       if (this.stuckTimer > 1.2) {
@@ -820,7 +1046,9 @@ export class RagdollRacer {
       currentRot.z,
       currentRot.w
     );
-    const forwardTilt = Math.min(0.18, speed * 0.014);
+    const forwardTilt = this.isKartMode
+      ? Math.min(0.11, speed * 0.006)
+      : Math.min(0.18, speed * 0.014);
     const targetQuat = new THREE.Quaternion().setFromEuler(
       new THREE.Euler(forwardTilt, targetYaw, 0, 'YXZ')
     );
@@ -847,18 +1075,27 @@ export class RagdollRacer {
       true
     );
 
-    // Drive Rapier3D joint motors for active R6 arm & leg running cycle
-    this.runCyclePhase += dt * (8.5 + speed * 0.65);
-    const swing = Math.sin(this.runCyclePhase) * Math.min(1.15, 0.35 + speed * 0.075);
-
     this.configureNeckMotor(RAPIER.JointAxis.AngX, -forwardTilt * 0.5, 140, 14);
     this.configureNeckMotor(RAPIER.JointAxis.AngY, 0, 140, 14);
     this.configureNeckMotor(RAPIER.JointAxis.AngZ, 0, 140, 14);
 
-    this.leftShoulderJoint.configureMotorPosition(swing, 160, 16);
-    this.rightShoulderJoint.configureMotorPosition(-swing, 160, 16);
-    this.leftHipJoint.configureMotorPosition(-swing, 185, 18);
-    this.rightHipJoint.configureMotorPosition(swing, 185, 18);
+    if (this.isKartMode) {
+      // Seated kart driving posture (arms forward holding steering wheel, legs tucked in cockpit)
+      const steerWiggle = Math.sin(this.elapsedTime * 6.0) * 0.08;
+      this.leftShoulderJoint.configureMotorPosition(-0.88 + steerWiggle, 180, 18);
+      this.rightShoulderJoint.configureMotorPosition(-0.88 - steerWiggle, 180, 18);
+      this.leftHipJoint.configureMotorPosition(-0.48, 185, 18);
+      this.rightHipJoint.configureMotorPosition(-0.48, 185, 18);
+    } else {
+      // Drive Rapier3D joint motors for active R6 arm & leg running cycle
+      this.runCyclePhase += dt * (8.5 + speed * 0.65);
+      const swing = Math.sin(this.runCyclePhase) * Math.min(1.15, 0.35 + speed * 0.075);
+
+      this.leftShoulderJoint.configureMotorPosition(swing, 160, 16);
+      this.rightShoulderJoint.configureMotorPosition(-swing, 160, 16);
+      this.leftHipJoint.configureMotorPosition(-swing, 185, 18);
+      this.rightHipJoint.configureMotorPosition(swing, 185, 18);
+    }
   }
 
   private configureNeckMotor(

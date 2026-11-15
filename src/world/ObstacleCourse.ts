@@ -13,6 +13,8 @@ import { SoundManager } from '../audio/SoundManager';
 
 export const TRACK_LENGTH = 146;
 export const FINISH_Z = 132;
+export const DINO_TRACK_LENGTH = 244;
+export const DINO_FINISH_Z = 228;
 export const TRACK_SLOPE = 0.088;
 
 interface SweeperData {
@@ -147,6 +149,9 @@ interface FlyingPterosaurData {
   baseZ: number;
   phase: number;
   radiusX: number;
+  canDropPoop: boolean;
+  dropTimer: number;
+  dropInterval: number;
 }
 
 interface AnimatedDinoPart {
@@ -157,11 +162,80 @@ interface AnimatedDinoPart {
   phase: number;
 }
 
+interface RunningTRexData {
+  group: THREE.Group;
+  leftLeg: THREE.Mesh;
+  rightLeg: THREE.Mesh;
+  jawPivot: THREE.Group;
+  body: RAPIER.RigidBody;
+  zMin: number;
+  zMax: number;
+  curZ: number;
+  laneOffset: number;
+  speedZ: number;
+  scale: number;
+  phase: number;
+  hitCooldowns: Map<string, number>;
+}
+
+interface FallingPoopData {
+  mesh: THREE.Mesh;
+  x: number;
+  y: number;
+  z: number;
+  vy: number;
+}
+
+interface PoopPuddleData {
+  group: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  lifeLeft: number;
+  maxLife: number;
+}
+
+interface TurboPadData {
+  z: number;
+  offsetX: number;
+  halfW: number;
+  halfL: number;
+  texture: THREE.CanvasTexture;
+  hitCooldowns: Map<string, number>;
+}
+
+interface RollingBoulderData {
+  mesh: THREE.Mesh;
+  body: RAPIER.RigidBody;
+  zStart: number;
+  zEnd: number;
+  curZ: number;
+  speedZ: number;
+  laneAmp: number;
+  laneFreq: number;
+  phase: number;
+  radius: number;
+  hitCooldowns: Map<string, number>;
+}
+
+interface LavaGeyserData {
+  z: number;
+  offsetX: number;
+  radius: number;
+  plumeMesh: THREE.Mesh;
+  ringMesh: THREE.Mesh;
+  freq: number;
+  phase: number;
+  hitCooldowns: Map<string, number>;
+}
+
 export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
   public readonly mapTheme: MapTheme;
   public readonly obstacleDensity: ObstacleDensity;
+  public readonly finishZ: number;
+  public readonly trackLength: number;
   private flickMode: FlickMode;
   private courseGroup: THREE.Group;
   private bodies: RAPIER.RigidBody[] = [];
@@ -183,6 +257,12 @@ export class ObstacleCourse {
   private shockwaveDrums: ShockwaveDrumData[] = [];
   private flyingPterosaurs: FlyingPterosaurData[] = [];
   private animatedDinoParts: AnimatedDinoPart[] = [];
+  private runningTRexes: RunningTRexData[] = [];
+  private fallingPoops: FallingPoopData[] = [];
+  private poopPuddles: PoopPuddleData[] = [];
+  private turboPads: TurboPadData[] = [];
+  private rollingBoulders: RollingBoulderData[] = [];
+  private lavaGeysers: LavaGeyserData[] = [];
   private overheadBanners: {
     mat: THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
     z: number;
@@ -209,6 +289,8 @@ export class ObstacleCourse {
     this.scene = scene;
     this.mapTheme = mapTheme;
     this.obstacleDensity = obstacleDensity;
+    this.finishZ = mapTheme === 'DINOSAUR' ? DINO_FINISH_Z : FINISH_Z;
+    this.trackLength = mapTheme === 'DINOSAUR' ? DINO_TRACK_LENGTH : TRACK_LENGTH;
     this.flickMode = flickMode;
     this.courseGroup = new THREE.Group();
     this.scene.add(this.courseGroup);
@@ -279,6 +361,22 @@ export class ObstacleCourse {
   }
 
   public getTrackHalfWidthAtZ(z: number): number {
+    if (this.mapTheme === 'DINOSAUR') {
+      // Narrow Canyon Bridge near end of long Dinosaur Kart track (Z = 180 .. 214)
+      if (z >= 180 && z < 186) {
+        const t = (z - 180) / 6;
+        return 9.0 * (1 - t) + 5.6 * t;
+      }
+      if (z >= 186 && z <= 208) {
+        return 5.6;
+      }
+      if (z > 208 && z <= 214) {
+        const t = (z - 208) / 6;
+        return 5.6 * (1 - t) + 9.0 * t;
+      }
+      return 9.0;
+    }
+
     // Narrow bottleneck bridge in Zone 4 (Z = 102 .. 124)
     if (z >= 98 && z < 105) {
       const t = (z - 98) / 7;
@@ -299,20 +397,20 @@ export class ObstacleCourse {
       if (z < 42) return '🥋 태비태권도장';
       if (z < 72) return '🪵 송판 & 기와 격파';
       if (z < 100) return '🥁 기합 장풍 존';
-      if (z < FINISH_Z) return '⚔️ 대련장';
+      if (z < this.finishZ) return '⚔️ 대련장';
       return '🏆 승단 심사';
     }
     if (this.mapTheme === 'DINOSAUR') {
-      if (z < 42) return '🌴 공룡 둥지 정글';
-      if (z < 72) return '🥚 공룡알 관문';
-      if (z < 100) return '🌋 화산 & 익룡 계곡';
-      if (z < FINISH_Z) return '🦖 티라노 협곡 다리';
+      if (z < 62) return '🏎️ 공룡 정글 서킷';
+      if (z < 120) return '🦖 티라노 추격 지대';
+      if (z < 180) return '💩 익룡 똥 & 화산 계곡';
+      if (z < this.finishZ) return '🌋 최후의 공룡 협곡';
       return '🏆 정글 탈출 성공';
     }
     if (z < 42) return '🏠 교실';
     if (z < 72) return '❓ 복도 관문';
     if (z < 100) return '💨 강풍 통로';
-    if (z < FINISH_Z) return '🏃 운동장';
+    if (z < this.finishZ) return '🏃 운동장';
     return '🏁 결승선';
   }
 
@@ -541,7 +639,7 @@ export class ObstacleCourse {
     );
 
     const stepZ = 4.0;
-    for (let z0 = -4; z0 < 146; z0 += stepZ) {
+    for (let z0 = -4; z0 < this.trackLength; z0 += stepZ) {
       const z1 = z0 + stepZ;
       const zMid = (z0 + z1) * 0.5;
       const x0 = this.getTrackCenterX(z0);
@@ -561,9 +659,15 @@ export class ObstacleCourse {
       );
 
       let floorMat = zone1Mat;
-      if (zMid >= 42 && zMid < 72) floorMat = zone2Mat;
-      else if (zMid >= 72 && zMid < 100) floorMat = zone3Mat;
-      else if (zMid >= 100) floorMat = zone4Mat;
+      if (isDino) {
+        if (zMid >= 62 && zMid < 120) floorMat = zone2Mat;
+        else if (zMid >= 120 && zMid < 180) floorMat = zone3Mat;
+        else if (zMid >= 180) floorMat = zone4Mat;
+      } else {
+        if (zMid >= 42 && zMid < 72) floorMat = zone2Mat;
+        else if (zMid >= 72 && zMid < 100) floorMat = zone3Mat;
+        else if (zMid >= 100) floorMat = zone4Mat;
+      }
 
       const floorMesh = new THREE.Mesh(
         new THREE.BoxGeometry(floorHalfW * 2, 1.2, floorSegLen),
@@ -586,14 +690,17 @@ export class ObstacleCourse {
       );
       this.world.createCollider(
         RAPIER.ColliderDesc.cuboid(floorHalfW, 0.6, floorSegLen * 0.5)
-          .setFriction(0.12)
+          .setFriction(isDino ? 0.05 : 0.12)
           .setRestitution(0.15)
           .setCollisionGroups(envGroup),
         floorBody
       );
 
-      const isBridge = zMid >= 103 && zMid <= 123;
-      const wallHeight = zMid < 72 ? 3.2 : isBridge ? 0.9 : 1.7;
+      const isBridge = isDino
+        ? zMid >= 184 && zMid <= 210
+        : zMid >= 103 && zMid <= 123;
+      const wallCutoffZ = isDino ? 120 : 72;
+      const wallHeight = zMid < wallCutoffZ ? 3.0 : isBridge ? 0.95 : 1.75;
       const rightX = Math.cos(yaw);
       const rightZ = -Math.sin(yaw);
 
@@ -625,16 +732,17 @@ export class ObstacleCourse {
         this.courseGroup.add(wallMesh);
 
         if (!isBridge) {
-          const capColor =
-            isDino && zMid >= 72 && zMid < 100
+          const capColor = isDino
+            ? zMid >= 120 && zMid < 180
               ? 0xea580c
-              : zMid >= 100
-              ? isTkd
-                ? 0xdc2626
-                : isDino
-                ? 0xca8a04
-                : 0x22c55e
-              : null;
+              : zMid >= 180
+              ? 0xca8a04
+              : null
+            : zMid >= 100
+            ? isTkd
+              ? 0xdc2626
+              : 0x22c55e
+            : null;
           const cap = new THREE.Mesh(
             new THREE.BoxGeometry(0.78, 0.22, wSegLen),
             capColor !== null
@@ -667,7 +775,7 @@ export class ObstacleCourse {
         );
       }
 
-      if (zMid >= 10 && zMid <= 40 && Math.round(z0) % 12 === 0) {
+      if (zMid >= 10 && zMid <= (isDino ? 58 : 40) && Math.round(z0) % 12 === 0) {
         for (const side of [-1, 1]) {
           const decoX = xMid + side * rightX * (halfW - 0.05);
           const decoZ = zMid + side * rightZ * (halfW - 0.05);
@@ -729,8 +837,11 @@ export class ObstacleCourse {
       backBody
     );
 
+    const groundW = isDino ? 190 : 130;
+    const groundL = isDino ? 290 : 160;
+    const groundCenterZ = isDino ? 134 : 86;
     const groundMesh = new THREE.Mesh(
-      new THREE.PlaneGeometry(130, 160),
+      new THREE.PlaneGeometry(groundW, groundL),
       new THREE.MeshStandardMaterial({
         color: isTkd ? 0xfde68a : isDino ? 0x15803d : 0x4ade80,
         roughness: 0.9,
@@ -738,9 +849,9 @@ export class ObstacleCourse {
     );
     groundMesh.rotation.x = -Math.PI / 2 + TRACK_SLOPE;
     groundMesh.position.set(
-      this.getTrackCenterX(90),
-      this.getTrackHeightAtZ(90) - 2.2,
-      86
+      this.getTrackCenterX(groundCenterZ),
+      this.getTrackHeightAtZ(groundCenterZ) - 2.4,
+      groundCenterZ
     );
     groundMesh.receiveShadow = true;
     this.courseGroup.add(groundMesh);
@@ -777,10 +888,10 @@ export class ObstacleCourse {
       this.addArchSign(72, '🥁 기합 장풍 & 품새 스텝', '#2563eb', '#dbeafe', '#1e3a8a');
       this.addArchSign(103, '⚔️ 챔피언 대련장', '#1e293b', '#f8fafc', '#0f172a');
     } else if (isDino) {
-      this.addArchSign(11, '🦖 공룡 정글 탈출 시작!', '#15803d', '#dcfce7', '#14532d');
-      this.addArchSign(43, '🥚 공룡알 부화 관문', '#d97706', '#fef3c7', '#78350f');
-      this.addArchSign(72, '🌋 화산 용암 & 프테라노돈', '#dc2626', '#fee2e2', '#7f1d1d');
-      this.addArchSign(103, '🦖 티라노 최후의 협곡', '#7c2d12', '#ffedd5', '#431407');
+      this.addArchSign(11, '🏎️ 공룡 정글 카트 출발!', '#15803d', '#dcfce7', '#14532d');
+      this.addArchSign(62, '🦖 티라노가 달려온다!!', '#dc2626', '#fee2e2', '#7f1d1d');
+      this.addArchSign(120, '💩 익룡 똥 폭격 & 화산 계곡', '#d97706', '#fef3c7', '#78350f');
+      this.addArchSign(182, '🌋 최후의 공룡 협곡 스퍼트!', '#7c2d12', '#ffedd5', '#431407');
     } else {
       this.addArchSign(11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
       this.addArchSign(43, '❓ 미스터리 관문', '#0284c7', '#e0f2fe', '#075985');
@@ -1270,36 +1381,37 @@ export class ObstacleCourse {
   }
 
   // =====================================================================
-  // MAP 3: DINOSAUR JUNGLE ESCAPE (공룡 정글 탈출!)
+  // MAP 3: DINOSAUR KART JUNGLE ESCAPE (공룡 정글 카트 탈출! 228m 서킷)
   // =====================================================================
   private buildDinosaurJungleScenery(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
     const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.85 });
     const palmLeafMat = new THREE.MeshStandardMaterial({ color: 0x22c55e, roughness: 0.65 });
     const fernMat = new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.7 });
 
-    // Jungle palm trees & prehistoric ferns along both sides
-    for (let tz = 12; tz <= 144; tz += 10) {
+    // Jungle palm trees & prehistoric ferns along both sides up to z = 238
+    for (let tz = 12; tz <= 238; tz += 12) {
       const cx = this.getTrackCenterX(tz);
       const ty = this.getTrackHeightAtZ(tz) - 1.4;
       const hw = this.getTrackHalfWidthAtZ(tz);
       for (const side of [-1, 1]) {
         const palmGroup = new THREE.Group();
-        const distOut = hw + 3.6 + (tz % 3) * 1.4;
+        const distOut = hw + 3.8 + (tz % 3) * 1.4;
         palmGroup.position.set(cx + side * distOut, ty, tz);
 
-        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.55, 5.4, 8), trunkMat);
-        trunk.position.y = 2.7;
+        const trunk = new THREE.Mesh(new THREE.CylinderGeometry(0.32, 0.55, 5.6, 8), trunkMat);
+        trunk.position.y = 2.8;
         trunk.rotation.z = -side * 0.14;
         trunk.castShadow = true;
         palmGroup.add(trunk);
 
         for (let b = 0; b < 5; b++) {
-          const frond = new THREE.Mesh(new THREE.BoxGeometry(2.6, 0.16, 0.85), palmLeafMat);
+          const frond = new THREE.Mesh(new THREE.BoxGeometry(2.7, 0.16, 0.85), palmLeafMat);
           const ang = (b * Math.PI * 2) / 5;
           frond.position.set(
-            -side * 0.3 + Math.cos(ang) * 1.15,
-            5.3,
-            Math.sin(ang) * 1.15
+            -side * 0.3 + Math.cos(ang) * 1.2,
+            5.5,
+            Math.sin(ang) * 1.2
           );
           frond.rotation.y = -ang;
           frond.rotation.z = -0.25;
@@ -1314,15 +1426,16 @@ export class ObstacleCourse {
       }
     }
 
-    // Smoking Volcanoes in background flanks
+    // Smoking Volcanoes along the long jungle circuit
     for (const vc of [
-      { z: 82, side: -1, scale: 1.15 },
-      { z: 116, side: 1, scale: 1.35 },
+      { z: 90, side: -1, scale: 1.2 },
+      { z: 148, side: 1, scale: 1.45 },
+      { z: 204, side: -1, scale: 1.3 },
     ]) {
       const cx = this.getTrackCenterX(vc.z);
       const vy = this.getTrackHeightAtZ(vc.z) - 2.0;
       const vGroup = new THREE.Group();
-      vGroup.position.set(cx + vc.side * 22, vy, vc.z);
+      vGroup.position.set(cx + vc.side * 23, vy, vc.z);
       vGroup.scale.setScalar(vc.scale);
 
       const mountain = new THREE.Mesh(
@@ -1344,49 +1457,41 @@ export class ObstacleCourse {
       this.courseGroup.add(vGroup);
     }
 
-    // Giant Iconic Dinosaurs guarding the course sides!
-    const brachiL = this.createDinosaurMesh('BRACHIOSAURUS', 1.45, true);
-    brachiL.group.position.set(
-      this.getTrackCenterX(28) - 14.5,
-      this.getTrackHeightAtZ(28) - 1.2,
-      28
-    );
-    brachiL.group.rotation.y = 0.65;
-    this.courseGroup.add(brachiL.group);
-
-    const brachiR = this.createDinosaurMesh('BRACHIOSAURUS', 1.55, true);
-    brachiR.group.position.set(
-      this.getTrackCenterX(64) + 15.0,
-      this.getTrackHeightAtZ(64) - 1.2,
-      64
-    );
-    brachiR.group.rotation.y = -0.8;
-    this.courseGroup.add(brachiR.group);
-
-    const trexStart = this.createDinosaurMesh('TREX', 1.4, true);
-    trexStart.group.position.set(
-      this.getTrackCenterX(15) + 13.5,
-      this.getTrackHeightAtZ(15) - 1.0,
-      15
-    );
-    trexStart.group.rotation.y = -0.9;
-    this.courseGroup.add(trexStart.group);
-
-    const trexFinish = this.createDinosaurMesh('TREX', 1.7, true);
-    trexFinish.group.position.set(
-      this.getTrackCenterX(128) - 12.5,
-      this.getTrackHeightAtZ(128) - 1.0,
-      128
-    );
-    trexFinish.group.rotation.y = 0.75;
-    this.courseGroup.add(trexFinish.group);
-
-    // Flying Pteranodons circling overhead
-    for (const pc of [
-      { z: 48, yOffset: 10.5, phase: 0, radiusX: 11 },
-      { z: 86, yOffset: 11.2, phase: 2.1, radiusX: 13 },
-      { z: 114, yOffset: 10.2, phase: 4.2, radiusX: 10 },
+    // Giant Iconic Dinosaurs guarding the course flanks
+    for (const sc of [
+      { kind: 'BRACHIOSAURUS' as const, z: 28, side: -1, dist: 14.5, scale: 1.45, rot: 0.65 },
+      { kind: 'BRACHIOSAURUS' as const, z: 98, side: 1, dist: 15.0, scale: 1.55, rot: -0.8 },
+      { kind: 'BRACHIOSAURUS' as const, z: 168, side: -1, dist: 14.5, scale: 1.5, rot: 0.7 },
+      { kind: 'TREX' as const, z: 15, side: 1, dist: 13.5, scale: 1.35, rot: -0.9 },
+      { kind: 'TREX' as const, z: 222, side: -1, dist: 13.0, scale: 1.75, rot: 0.75 },
     ]) {
+      const dino = this.createDinosaurMesh(sc.kind, sc.scale, true);
+      dino.group.position.set(
+        this.getTrackCenterX(sc.z) + sc.side * sc.dist,
+        this.getTrackHeightAtZ(sc.z) - 1.1,
+        sc.z
+      );
+      dino.group.rotation.y = sc.rot;
+      this.courseGroup.add(dino.group);
+    }
+
+    // Flying Pteranodons patrolling & bombing the track with sticky Poop!
+    const pteroConfigs = isLight
+      ? [
+          { z: 48, yOffset: 9.6, phase: 0.0, radiusX: 7.5, dropInterval: 2.5 },
+          { z: 102, yOffset: 9.8, phase: 1.7, radiusX: 7.5, dropInterval: 2.4 },
+          { z: 154, yOffset: 9.6, phase: 3.1, radiusX: 7.5, dropInterval: 2.3 },
+          { z: 198, yOffset: 9.4, phase: 4.5, radiusX: 4.5, dropInterval: 2.5 },
+        ]
+      : [
+          { z: 44, yOffset: 9.4, phase: 0.0, radiusX: 8.0, dropInterval: 1.55 },
+          { z: 86, yOffset: 9.8, phase: 1.4, radiusX: 8.0, dropInterval: 1.45 },
+          { z: 128, yOffset: 9.6, phase: 2.7, radiusX: 8.0, dropInterval: 1.45 },
+          { z: 164, yOffset: 9.8, phase: 4.1, radiusX: 8.0, dropInterval: 1.4 },
+          { z: 198, yOffset: 9.4, phase: 5.3, radiusX: 4.8, dropInterval: 1.5 },
+        ];
+
+    for (const pc of pteroConfigs) {
       const ptero = this.createPteranodonMesh();
       const cx = this.getTrackCenterX(pc.z);
       const y = this.getTrackHeightAtZ(pc.z) + pc.yOffset;
@@ -1401,6 +1506,9 @@ export class ObstacleCourse {
         baseZ: pc.z,
         phase: pc.phase,
         radiusX: pc.radiusX,
+        canDropPoop: true,
+        dropTimer: 0.4 + Math.random() * pc.dropInterval,
+        dropInterval: pc.dropInterval,
       });
     }
   }
@@ -1431,7 +1539,7 @@ export class ObstacleCourse {
     rightWing.position.set(1.6, 0.15, 0);
 
     group.add(body, head, beak, crest, leftWing, rightWing);
-    group.scale.setScalar(1.25);
+    group.scale.setScalar(1.3);
     return { group, leftWing, rightWing };
   }
 
@@ -1439,7 +1547,12 @@ export class ObstacleCourse {
     kind: 'TREX' | 'TRICERATOPS' | 'BRACHIOSAURUS' | 'STEGOSAURUS',
     scale: number = 1.0,
     registerAnim: boolean = false
-  ): { group: THREE.Group } {
+  ): {
+    group: THREE.Group;
+    leftLeg?: THREE.Mesh;
+    rightLeg?: THREE.Mesh;
+    headPivot?: THREE.Group;
+  } {
     const group = new THREE.Group();
     const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a });
     const whiteMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.3 });
@@ -1454,12 +1567,13 @@ export class ObstacleCourse {
       const belly = new THREE.Mesh(new THREE.BoxGeometry(1.6, 1.8, 0.4), bellyMat);
       belly.position.set(0, 2.2, 1.35);
 
-      for (const sx of [-0.65, 0.65]) {
-        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.8), skinMat);
-        leg.position.set(sx, 0.8, 0);
-        leg.castShadow = true;
-        group.add(leg);
-      }
+      const leftLeg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.8), skinMat);
+      leftLeg.position.set(-0.65, 0.8, 0);
+      leftLeg.castShadow = true;
+      const rightLeg = new THREE.Mesh(new THREE.BoxGeometry(0.7, 1.6, 0.8), skinMat);
+      rightLeg.position.set(0.65, 0.8, 0);
+      rightLeg.castShadow = true;
+      group.add(leftLeg, rightLeg);
 
       const tail = new THREE.Mesh(new THREE.BoxGeometry(1.0, 1.0, 2.6), skinMat);
       tail.position.set(0, 1.9, -2.3);
@@ -1496,6 +1610,8 @@ export class ObstacleCourse {
       }
 
       group.add(torso, belly, tail, headPivot);
+      group.scale.setScalar(scale);
+      return { group, leftLeg, rightLeg, headPivot };
     } else if (kind === 'TRICERATOPS') {
       const skinMat = new THREE.MeshStandardMaterial({ color: 0xea580c, roughness: 0.45 });
       const frillMat = new THREE.MeshStandardMaterial({ color: 0xfb923c, roughness: 0.4 });
@@ -1604,7 +1720,6 @@ export class ObstacleCourse {
       for (let p = 0; p < 4; p++) {
         const plate = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.72, 0.52), plateMat);
         plate.position.set(0, 1.85, -0.75 + p * 0.52);
-        plate.rotation.z = 0;
         plate.rotation.x = 0.25;
         plate.castShadow = true;
         group.add(plate);
@@ -1619,6 +1734,274 @@ export class ObstacleCourse {
 
     group.scale.setScalar(scale);
     return { group };
+  }
+
+  private createRunningTRex(
+    zMin: number,
+    zMax: number,
+    laneOffset: number,
+    speedZ: number,
+    initialProgress: number,
+    scale: number = 0.85
+  ): void {
+    const curZ = zMin + (zMax - zMin) * initialProgress;
+    const wx = this.getTrackCenterX(curZ) + laneOffset;
+    const wy = this.getTrackHeightAtZ(curZ);
+
+    const dino = this.createDinosaurMesh('TREX', scale, false);
+    // Face straight -Z toward oncoming kart racers!
+    dino.group.rotation.y = Math.PI;
+    dino.group.position.set(wx, wy, curZ);
+    this.courseGroup.add(dino.group);
+
+    const body = this.createBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(wx, wy + 1.8 * scale, curZ)
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(1.1 * scale, 1.6 * scale, 1.65 * scale)
+        .setRestitution(1.05)
+        .setCollisionGroups(this.envCollisionGroup()),
+      body
+    );
+
+    this.runningTRexes.push({
+      group: dino.group,
+      leftLeg: dino.leftLeg!,
+      rightLeg: dino.rightLeg!,
+      jawPivot: dino.headPivot!,
+      body,
+      zMin,
+      zMax,
+      curZ,
+      laneOffset,
+      speedZ,
+      scale,
+      phase: Math.random() * 6,
+      hitCooldowns: new Map(),
+    });
+  }
+
+  private spawnPoopPuddle(x: number, y: number, z: number, life: number = 7.5): void {
+    // Limit simultaneous active poop puddles to keep frame rate crisp
+    if (this.poopPuddles.length >= 24) {
+      const oldest = this.poopPuddles.shift();
+      if (oldest) this.courseGroup.remove(oldest.group);
+    }
+
+    const group = new THREE.Group();
+    group.position.set(x, y + 0.06, z);
+    group.rotation.x = TRACK_SLOPE;
+
+    const splatMat = new THREE.MeshStandardMaterial({
+      color: 0x713f12,
+      roughness: 0.35,
+      metalness: 0.08,
+    });
+    const moundMat = new THREE.MeshStandardMaterial({
+      color: 0x854d0e,
+      roughness: 0.45,
+    });
+    const stinkMat = new THREE.MeshBasicMaterial({
+      color: 0x84cc16,
+      transparent: true,
+      opacity: 0.55,
+      side: THREE.DoubleSide,
+    });
+
+    const disc = new THREE.Mesh(new THREE.CylinderGeometry(1.15, 1.25, 0.1, 16), splatMat);
+    const tier1 = new THREE.Mesh(new THREE.CylinderGeometry(0.62, 0.78, 0.24, 14), moundMat);
+    tier1.position.y = 0.16;
+    const tier2 = new THREE.Mesh(new THREE.CylinderGeometry(0.38, 0.56, 0.22, 12), moundMat);
+    tier2.position.y = 0.36;
+    const tip = new THREE.Mesh(new THREE.ConeGeometry(0.28, 0.32, 10), moundMat);
+    tip.position.y = 0.58;
+
+    const ring = new THREE.Mesh(new THREE.RingGeometry(1.22, 1.48, 20), stinkMat);
+    ring.rotation.x = -Math.PI / 2;
+    ring.position.y = 0.08;
+
+    group.add(disc, tier1, tier2, tip, ring);
+    this.courseGroup.add(group);
+
+    this.poopPuddles.push({
+      group,
+      x,
+      y,
+      z,
+      lifeLeft: life,
+      maxLife: life,
+    });
+  }
+
+  private seedInitialPoopPuddles(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    const spots = isLight
+      ? [
+          { z: 54, offset: -2.4 },
+          { z: 106, offset: 2.6 },
+          { z: 152, offset: -1.8 },
+          { z: 196, offset: 1.2 },
+        ]
+      : [
+          { z: 48, offset: -2.8 },
+          { z: 58, offset: 2.9 },
+          { z: 96, offset: 0.0 },
+          { z: 126, offset: -3.2 },
+          { z: 142, offset: 3.1 },
+          { z: 162, offset: -1.6 },
+          { z: 190, offset: 1.5 },
+          { z: 204, offset: -1.6 },
+        ];
+
+    for (const s of spots) {
+      const wx = this.getTrackCenterX(s.z) + s.offset;
+      const wy = this.getTrackHeightAtZ(s.z);
+      this.spawnPoopPuddle(wx, wy, s.z, 18.0);
+    }
+  }
+
+  private createTurboPad(
+    z: number,
+    offsetX: number,
+    halfW: number = 1.65,
+    halfL: number = 2.6
+  ): void {
+    const cx = this.getTrackCenterX(z);
+    const wx = cx + offsetX;
+    const wy = this.getTrackHeightAtZ(z) + 0.09;
+
+    const canvas = document.createElement('canvas');
+    canvas.width = 128;
+    canvas.height = 128;
+    const ctx = canvas.getContext('2d')!;
+    ctx.fillStyle = '#ea580c';
+    ctx.fillRect(0, 0, 128, 128);
+    ctx.strokeStyle = '#fef08a';
+    ctx.lineWidth = 16;
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    for (const cy of [46, 98]) {
+      ctx.beginPath();
+      ctx.moveTo(22, cy + 20);
+      ctx.lineTo(64, cy - 22);
+      ctx.lineTo(106, cy + 20);
+      ctx.stroke();
+    }
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.wrapS = THREE.RepeatWrapping;
+    tex.wrapT = THREE.RepeatWrapping;
+    tex.repeat.set(1, 2);
+
+    const mesh = new THREE.Mesh(
+      new THREE.BoxGeometry(halfW * 2, 0.14, halfL * 2),
+      new THREE.MeshBasicMaterial({ map: tex })
+    );
+    mesh.position.set(wx, wy, z);
+    mesh.rotation.x = TRACK_SLOPE;
+    this.courseGroup.add(mesh);
+
+    this.turboPads.push({
+      z,
+      offsetX,
+      halfW,
+      halfL,
+      texture: tex,
+      hitCooldowns: new Map(),
+    });
+  }
+
+  private createRollingBoulder(
+    zStart: number,
+    zEnd: number,
+    speedZ: number,
+    laneAmp: number,
+    laneFreq: number,
+    phase: number,
+    radius: number = 1.35
+  ): void {
+    const initZ = zStart + (zEnd - zStart) * (phase % 1);
+    const wx = this.getTrackCenterX(initZ) + Math.sin(phase) * laneAmp;
+    const wy = this.getTrackHeightAtZ(initZ) + radius;
+
+    const mesh = new THREE.Mesh(
+      new THREE.DodecahedronGeometry(radius, 1),
+      new THREE.MeshStandardMaterial({
+        color: 0x57534e,
+        emissive: 0x9a3412,
+        emissiveIntensity: 0.35,
+        roughness: 0.8,
+      })
+    );
+    mesh.position.set(wx, wy, initZ);
+    mesh.castShadow = true;
+    this.courseGroup.add(mesh);
+
+    const body = this.createBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(wx, wy, initZ)
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.ball(radius)
+        .setRestitution(1.1)
+        .setCollisionGroups(this.envCollisionGroup()),
+      body
+    );
+
+    this.rollingBoulders.push({
+      mesh,
+      body,
+      zStart,
+      zEnd,
+      curZ: initZ,
+      speedZ,
+      laneAmp,
+      laneFreq,
+      phase,
+      radius,
+      hitCooldowns: new Map(),
+    });
+  }
+
+  private createLavaGeyser(
+    z: number,
+    offsetX: number,
+    freq: number,
+    phase: number,
+    radius: number = 1.65
+  ): void {
+    const wx = this.getTrackCenterX(z) + offsetX;
+    const wy = this.getTrackHeightAtZ(z) + 0.08;
+
+    const ringGeo = new THREE.RingGeometry(radius * 0.45, radius, 22);
+    ringGeo.rotateX(-Math.PI / 2 + TRACK_SLOPE);
+    const ringMesh = new THREE.Mesh(
+      ringGeo,
+      new THREE.MeshBasicMaterial({ color: 0xf97316, side: THREE.DoubleSide })
+    );
+    ringMesh.position.set(wx, wy, z);
+    this.courseGroup.add(ringMesh);
+
+    const plumeMesh = new THREE.Mesh(
+      new THREE.CylinderGeometry(radius * 0.65, radius * 0.85, 5.2, 14),
+      new THREE.MeshBasicMaterial({
+        color: 0xfb923c,
+        transparent: true,
+        opacity: 0.85,
+      })
+    );
+    plumeMesh.position.set(wx, wy - 2.6, z);
+    plumeMesh.visible = false;
+    this.courseGroup.add(plumeMesh);
+
+    this.lavaGeysers.push({
+      z,
+      offsetX,
+      radius,
+      plumeMesh,
+      ringMesh,
+      freq,
+      phase,
+      hitCooldowns: new Map(),
+    });
   }
 
   private createTriceratopsCharger(
@@ -1672,195 +2055,101 @@ export class ObstacleCourse {
   }
 
   private buildDinosaurCourse(): void {
-    this.buildDinosaurZone1Jungle();
-    this.buildDinosaurZone2EggsAndStego();
-    this.buildDinosaurZone3VolcanoAndLava();
-    this.buildDinosaurZone4TrexBridge();
+    this.buildDinosaurZone1KartCircuit();
+    this.buildDinosaurZone2TrexStampede();
+    this.buildDinosaurZone3PoopAndVolcano();
+    this.buildDinosaurZone4FinalCanyon();
+    this.seedInitialPoopPuddles();
     this.buildFinishArch(false);
   }
 
-  private buildDinosaurZone1Jungle(): void {
-    const isLight = this.obstacleDensity === 'LIGHT';
-    const envGroup = this.envCollisionGroup();
-
-    // 1. Stegosaurus Back-Plate Obstacles standing in the jungle
-    const stegoSpots = isLight
-      ? [
-          { z: 17.5, offset: -4.8 },
-          { z: 33.5, offset: 4.8 },
-        ]
-      : [
-          { z: 16.5, offset: -5.4 },
-          { z: 16.5, offset: 5.4 },
-          { z: 25.0, offset: -2.8 },
-          { z: 25.0, offset: 2.8 },
-          { z: 34.5, offset: -5.6 },
-          { z: 34.5, offset: 5.6 },
-        ];
-
-    for (const sp of stegoSpots) {
-      const cx = this.getTrackCenterX(sp.z);
-      const wx = cx + sp.offset;
-      const wz = sp.z;
-      const wy = this.getTrackHeightAtZ(wz);
-
-      const stego = this.createDinosaurMesh('STEGOSAURUS', 0.92, false);
-      stego.group.position.set(wx, wy, wz);
-      stego.group.rotation.y = sp.offset > 0 ? -0.45 : 0.45;
-      this.courseGroup.add(stego.group);
-
-      const body = this.createBody(
-        RAPIER.RigidBodyDesc.fixed().setTranslation(wx, wy + 1.0, wz)
-      );
-      this.world.createCollider(
-        RAPIER.ColliderDesc.cuboid(0.85, 1.0, 1.35)
-          .setRestitution(0.95)
-          .setCollisionGroups(envGroup),
-        body
-      );
-    }
-
-    // 2. Charging Triceratops & Volcano Jump Pads
-    if (isLight) {
-      this.createSpringboard(20.5, 0, 2.5, 1.6, 22, 25);
-      this.createTriceratopsCharger(27.0, 4.8, 2.1, 0);
-      this.createSweeper(35.0, 0, 5.2, 2.6, 2, 0x15803d);
-    } else {
-      this.createSpringboard(19.0, -2.6, 2.2, 1.6, 22, 26);
-      this.createSpringboard(19.0, 2.6, 2.2, 1.6, 22, 26);
-      this.createTriceratopsCharger(22.5, 5.4, 2.5, 0);
-      this.createSweeper(29.0, 0, 5.6, -3.5, 3, 0x15803d);
-      this.createTriceratopsCharger(36.5, 5.4, 3.0, Math.PI);
-    }
-  }
-
-  private buildDinosaurZone2EggsAndStego(): void {
+  private buildDinosaurZone1KartCircuit(): void {
     const isLight = this.obstacleDensity === 'LIGHT';
 
-    // 1. Dino Egg Breaking Gate at Z = 48
-    this.buildBreakingDoorRow(48, 5, 0, 'EGG');
+    // Early Kart Turbo Boost Strips to feel high speed right off the start!
+    this.createTurboPad(20, -3.5);
+    this.createTurboPad(20, 3.5);
+    this.createTurboPad(44, 0.0);
 
-    // 2. Volcano Lava Pop-up Geysers & Stego Spine Bumpers
-    const popupSpecs = isLight
-      ? [
-          { z: 56, offset: -3.4, phase: 0, freq: 2.8 },
-          { z: 65, offset: 3.4, phase: 1.8, freq: 2.8 },
-        ]
-      : [
-          { z: 54, offset: -4.2, phase: 0, freq: 3.4 },
-          { z: 54, offset: 4.2, phase: 2.0, freq: 3.4 },
-          { z: 60, offset: 0, phase: 1.0, freq: 3.9 },
-          { z: 67, offset: -3.2, phase: 0.4, freq: 4.1 },
-          { z: 67, offset: 3.2, phase: 2.5, freq: 4.1 },
-        ];
-    this.addPopupBumpers(popupSpecs, 0xea580c);
-
-    const pinballSpecs = isLight
-      ? [
-          { z: 60, offset: -4.0 },
-          { z: 60, offset: 4.0 },
-        ]
-      : [
-          { z: 57, offset: -4.8 },
-          { z: 57, offset: 4.8 },
-          { z: 64, offset: -2.5 },
-          { z: 64, offset: 2.5 },
-          { z: 69, offset: 0 },
-        ];
-    this.addPinballBumpers(pinballSpecs, 0x059669);
-
+    // Charging Triceratops across the wide jungle highway
+    this.createTriceratopsCharger(30, isLight ? 4.8 : 5.6, 2.3, 0);
     if (!isLight) {
-      this.buildBreakingDoorRow(63, 4, 1, 'EGG');
+      this.createTriceratopsCharger(52, 5.6, 2.6, Math.PI);
     }
+
+    // First charging T-Rex sprinting toward racers in Zone 1!
+    this.createRunningTRex(32, 60, isLight ? 3.5 : -3.4, 13.5, 0.75, 0.82);
   }
 
-  private buildDinosaurZone3VolcanoAndLava(): void {
+  private buildDinosaurZone2TrexStampede(): void {
     const isLight = this.obstacleDensity === 'LIGHT';
-    // 1. Magma Boost & Tar Pit Conveyors
-    this.buildConveyorBeltsAndFans(false);
 
-    // 2. Fiery Volcano Geyser Totems shooting magma shockwaves across the track
-    const geyserConfigs = isLight
-      ? [{ zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 1.85, phase: 1.2 }]
-      : [
-          { zMin: 75, zMax: 81.5, side: -1, dirX: 1, freq: 2.1, phase: 0 },
-          { zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 2.3, phase: 1.6 },
-          { zMin: 90.0, zMax: 96.5, side: -1, dirX: 1, freq: 2.5, phase: 3.1 },
-        ];
+    // Turbo strips tucked between charging T-Rex lanes
+    this.createTurboPad(74, -4.4);
+    this.createTurboPad(104, 4.2);
 
-    for (const gc of geyserConfigs) {
-      const zMid = (gc.zMin + gc.zMax) * 0.5;
-      const cx = this.getTrackCenterX(zMid);
-      const yMid = this.getTrackHeightAtZ(zMid) + 1.8;
-      const totemX = cx + gc.side * 9.8;
-
-      const totemGroup = new THREE.Group();
-      totemGroup.position.set(totemX, yMid, zMid);
-
-      const rock = new THREE.Mesh(
-        new THREE.ConeGeometry(2.1, 3.2, 8),
-        new THREE.MeshStandardMaterial({ color: 0x44403c, roughness: 0.8 })
-      );
-      const core = new THREE.Mesh(
-        new THREE.SphereGeometry(1.25, 14, 12),
-        new THREE.MeshBasicMaterial({ color: 0xf97316 })
-      );
-      core.position.y = 0.5;
-      totemGroup.add(rock, core);
-      this.courseGroup.add(totemGroup);
-
-      const waveMesh = new THREE.Mesh(
-        new THREE.TorusGeometry(1.75, 0.24, 10, 24),
-        new THREE.MeshBasicMaterial({ color: 0xf97316, transparent: true, opacity: 0.9 })
-      );
-      waveMesh.rotation.y = Math.PI / 2;
-      waveMesh.position.set(cx, yMid, zMid);
-      this.courseGroup.add(waveMesh);
-
-      this.shockwaveDrums.push({
-        zMin: gc.zMin,
-        zMax: gc.zMax,
-        side: gc.side,
-        dirX: gc.dirX,
-        freq: gc.freq,
-        phase: gc.phase,
-        drumMesh: totemGroup,
-        waveMesh,
-        hitCooldowns: new Map(),
-      });
-    }
-  }
-
-  private buildDinosaurZone4TrexBridge(): void {
-    const isLight = this.obstacleDensity === 'LIGHT';
+    // Pack of Running T-Rexes charging straight at incoming Karts (-Z)!
     if (isLight) {
-      this.addPopupBumpers([{ z: 122.5, offset: 0, phase: 0.9, freq: 3.1 }], 0xea580c);
-      this.addSwingingPendulums(
-        [{ z: 114, freq: 2.0, phase: 0, maxAngle: 0.82 }],
-        false
-      );
-      return;
+      this.createRunningTRex(68, 114, 0.0, 13.5, 0.4, 0.82);
+    } else {
+      this.createRunningTRex(66, 110, -4.0, 14.2, 0.2, 0.8);
+      this.createRunningTRex(74, 118, 4.0, 14.8, 0.72, 0.82);
     }
 
-    this.addPopupBumpers(
-      [
-        { z: 103.5, offset: -2.2, phase: 0, freq: 3.7 },
-        { z: 103.5, offset: 2.2, phase: 1.9, freq: 3.7 },
-        { z: 122.5, offset: 0, phase: 0.9, freq: 4.0 },
-      ],
-      0xea580c
-    );
+    this.createTriceratopsCharger(92, isLight ? 4.8 : 5.6, 2.7, 1.2);
+  }
 
-    this.addSwingingPendulums(
-      [
-        { z: 108, freq: 2.4, phase: 0, maxAngle: 0.92 },
-        { z: 118, freq: 2.75, phase: Math.PI, maxAngle: 0.92 },
-      ],
-      false
-    );
+  private buildDinosaurZone3PoopAndVolcano(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
 
-    this.createTriceratopsCharger(113, 2.5, 3.1, 0.5);
-    this.createSweeper(127, 0, 5.2, 4.1, 3, 0x16a34a);
+    // Rolling giant volcano boulders hurtling diagonally downhill
+    if (isLight) {
+      this.createRollingBoulder(124, 174, 13.5, 5.2, 1.6, 0.2, 1.35);
+    } else {
+      this.createRollingBoulder(122, 176, 15.5, 5.8, 1.9, 0.15, 1.4);
+      this.createRollingBoulder(124, 176, 14.0, 5.8, 2.1, 0.65, 1.35);
+    }
+
+    // Erupting Magma Lava Geysers along the volcanic valley
+    const geysers = isLight
+      ? [
+          { z: 138, offset: -2.8, freq: 1.7, phase: 0 },
+          { z: 162, offset: 2.8, freq: 1.8, phase: 1.8 },
+        ]
+      : [
+          { z: 132, offset: -3.8, freq: 2.0, phase: 0 },
+          { z: 132, offset: 3.8, freq: 2.0, phase: Math.PI },
+          { z: 150, offset: 0.0, freq: 2.2, phase: 1.1 },
+          { z: 168, offset: -3.2, freq: 2.1, phase: 0.5 },
+          { z: 168, offset: 3.2, freq: 2.1, phase: 2.6 },
+        ];
+    for (const g of geysers) {
+      this.createLavaGeyser(g.z, g.offset, g.freq, g.phase, 1.7);
+    }
+
+    // Mid-valley Turbo Pad
+    this.createTurboPad(148, -3.8);
+    if (!isLight) {
+      this.createTurboPad(148, 3.8);
+    }
+  }
+
+  private buildDinosaurZone4FinalCanyon(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+
+    // Final canyon T-Rex rush & lava geyser gauntlet on the bridge
+    if (isLight) {
+      this.createRunningTRex(188, 220, 0.0, 14.0, 0.65, 0.78);
+      this.createLavaGeyser(198, -2.2, 1.8, 0.4, 1.5);
+      this.createTurboPad(213, 0.0);
+    } else {
+      this.createLavaGeyser(190, -2.4, 2.0, 0, 1.45);
+      this.createLavaGeyser(201, 2.4, 2.0, Math.PI, 1.45);
+      this.createRunningTRex(186, 220, 0.0, 15.0, 0.55, 0.8);
+      this.createTriceratopsCharger(207, 3.0, 2.8, 0.6);
+      this.createTurboPad(214, -3.2);
+      this.createTurboPad(214, 3.2);
+    }
   }
 
   // =====================================================================
@@ -2608,9 +2897,10 @@ export class ObstacleCourse {
 
   private buildFinishArch(isTkd: boolean): void {
     const isDino = this.mapTheme === 'DINOSAUR';
-    const cx = this.getTrackCenterX(FINISH_Z);
-    const yaw = this.getTrackYawAtZ(FINISH_Z);
-    const finishY = this.getTrackHeightAtZ(FINISH_Z);
+    const finishZ = this.finishZ;
+    const cx = this.getTrackCenterX(finishZ);
+    const yaw = this.getTrackYawAtZ(finishZ);
+    const finishY = this.getTrackHeightAtZ(finishZ);
     const checkTex = this.createCheckeredTexture(
       isTkd ? '#facc15' : isDino ? '#bef264' : '#ffffff',
       isDino ? '#14532d' : '#0f172a',
@@ -2620,8 +2910,8 @@ export class ObstacleCourse {
 
     // Curved finish strip flush with the track floor
     const finishStripGeo = this.createCurvedFloorStripGeometry(
-      FINISH_Z - 1.6,
-      FINISH_Z + 1.6,
+      finishZ - 1.6,
+      finishZ + 1.6,
       -8.8,
       8.8,
       0.08,
@@ -2640,7 +2930,7 @@ export class ObstacleCourse {
     this.courseGroup.add(finishStrip);
 
     const finishGroup = new THREE.Group();
-    finishGroup.position.set(cx, finishY, FINISH_Z);
+    finishGroup.position.set(cx, finishY, finishZ);
     finishGroup.rotation.y = yaw;
 
     const archMat = new THREE.MeshStandardMaterial({
@@ -2666,12 +2956,12 @@ export class ObstacleCourse {
     );
     topBanner.position.set(0, 9.0, 0);
     finishGroup.add(topBanner);
-    this.overheadBanners.push({ mat: topBannerMat, z: FINISH_Z });
+    this.overheadBanners.push({ mat: topBannerMat, z: finishZ });
 
     this.courseGroup.add(finishGroup);
 
-    // Solid cushioned end wall at the end of the finish zone (Z = 146.5) so racers never fall off
-    const endZ = 146.5;
+    // Solid cushioned end wall at the end of the finish zone so racers never fall off
+    const endZ = finishZ + 14.5;
     const endCX = this.getTrackCenterX(endZ);
     const endY = this.getTrackHeightAtZ(endZ);
     const endYaw = this.getTrackYawAtZ(endZ);
@@ -2902,7 +3192,7 @@ export class ObstacleCourse {
       root.rotation.set(0.18, 0.42, -0.08);
       middleFingerPivot.rotation.x = -1.25;
 
-      const hoverZ = 127.0;
+      const hoverZ = this.finishZ - 5.0;
       const hoverCX = this.getTrackCenterX(hoverZ);
       const hoverY = this.getTrackHeightAtZ(hoverZ) + 7.4;
       root.position.set(hoverCX, hoverY, hoverZ);
@@ -2994,7 +3284,7 @@ export class ObstacleCourse {
 
     // Reset finish-line Giant Finger Flick trap
     this.flickedRacerIds.clear();
-    const hoverZ = 128.0;
+    const hoverZ = this.finishZ - 4.0;
     const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
     const hoverY = this.getTrackHeightAtZ(hoverZ) + 6.8;
     for (const hand of this.giantFlickHands) {
@@ -3009,6 +3299,34 @@ export class ObstacleCourse {
       hand.root.visible = hand.slotIndex === 0 && this.flickMode !== 'OFF';
       hand.shockwaveMesh.visible = false;
       hand.comicSprite.visible = false;
+    }
+
+    // Reset Dinosaur Kart traps (Poop drops/puddles, T-Rex cooldowns, Boulders, Turbo Pads, Lava Geysers)
+    for (const fp of this.fallingPoops) {
+      this.courseGroup.remove(fp.mesh);
+    }
+    this.fallingPoops = [];
+    for (const puddle of this.poopPuddles) {
+      this.courseGroup.remove(puddle.group);
+    }
+    this.poopPuddles = [];
+    if (this.mapTheme === 'DINOSAUR') {
+      this.seedInitialPoopPuddles();
+    }
+    for (const pt of this.flyingPterosaurs) {
+      pt.dropTimer = 0.4 + Math.random() * pt.dropInterval;
+    }
+    for (const trex of this.runningTRexes) {
+      trex.hitCooldowns.clear();
+    }
+    for (const b of this.rollingBoulders) {
+      b.hitCooldowns.clear();
+    }
+    for (const pad of this.turboPads) {
+      pad.hitCooldowns.clear();
+    }
+    for (const g of this.lavaGeysers) {
+      g.hitCooldowns.clear();
     }
 
     // Re-shuffle passable doors per rowGroup so EVERY gate row always has passable doors!
@@ -3422,14 +3740,14 @@ export class ObstacleCourse {
 
     // 12. Pre-Finish Giant Finger Flick (딱밤 스위치: OFF / DOUBLE / CHAOS + 수동 딱밤!)
     const maxFlicks = this.getMaxFlicks(racers.length);
-    const triggerFlickZoneZ = FINISH_Z - 5.8; // Z = 126.2 (clear view right before finish arch Z = 132)
+    const triggerFlickZoneZ = this.finishZ - 5.8;
 
     if (isRacing && this.flickMode !== 'OFF' && this.flickedRacerIds.size < maxFlicks) {
       const candidates = racers
         .filter((r) => {
           if (r.state === 'FINISHED' || this.flickedRacerIds.has(r.id)) return false;
           const p = r.getPosition();
-          return p.z >= triggerFlickZoneZ && p.z < FINISH_Z - 0.8;
+          return p.z >= triggerFlickZoneZ && p.z < this.finishZ - 0.8;
         })
         .sort((a, b) => b.getPosition().z - a.getPosition().z);
 
@@ -3461,7 +3779,7 @@ export class ObstacleCourse {
           this.flickedRacerIds.size < maxFlicks
         ) {
           hand.root.visible = true;
-          const hoverZ = 128.0;
+          const hoverZ = this.finishZ - 4.0;
           const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
           const hoverY =
             this.getTrackHeightAtZ(hoverZ) + 6.8 + Math.sin(this.elapsedTime * 2.6) * 0.45;
@@ -3497,7 +3815,7 @@ export class ObstacleCourse {
         hand.middleFingerPivot.rotation.x = THREE.MathUtils.lerp(-1.25, -1.58, windRatio);
 
         // Execute SNAP impact at 0.11s or sooner if racer nears finish line
-        if (hand.phaseTimer >= 0.11 || tp.z >= FINISH_Z - 3.2) {
+        if (hand.phaseTimer >= 0.11 || tp.z >= this.finishZ - 3.2) {
           hand.phase = 'IMPACT';
           hand.phaseTimer = 0;
           hand.impactPos.set(tp.x, tp.y + 0.4, tp.z);
@@ -3589,7 +3907,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 13. Dinosaur Jungle Scenery Animations (Pteranodons & Giant Dinosaurs)
+    // 13. Flying Pteranodons & Airborne Poop Bombs (익룡이 날아가다 똥 투하!)
     for (const pt of this.flyingPterosaurs) {
       const t = this.elapsedTime * 0.85 + pt.phase;
       const nextX = pt.baseX + Math.sin(t) * pt.radiusX;
@@ -3604,8 +3922,264 @@ export class ObstacleCourse {
       const flap = Math.sin(this.elapsedTime * 7.2 + pt.phase) * 0.45;
       pt.leftWing.rotation.z = flap;
       pt.rightWing.rotation.z = -flap;
+
+      if (isRacing && pt.canDropPoop) {
+        pt.dropTimer -= dt;
+        if (pt.dropTimer <= 0) {
+          pt.dropTimer = pt.dropInterval * (0.85 + Math.random() * 0.35);
+          const cx = this.getTrackCenterX(nextZ);
+          const halfW = this.getTrackHalfWidthAtZ(nextZ);
+          const dropX = THREE.MathUtils.clamp(nextX, cx - halfW + 1.2, cx + halfW - 1.2);
+          const poopMesh = new THREE.Mesh(
+            new THREE.SphereGeometry(0.42, 10, 10),
+            new THREE.MeshStandardMaterial({
+              color: 0x713f12,
+              roughness: 0.4,
+            })
+          );
+          poopMesh.position.set(dropX, nextY - 0.6, nextZ);
+          poopMesh.castShadow = true;
+          this.courseGroup.add(poopMesh);
+          this.fallingPoops.push({
+            mesh: poopMesh,
+            x: dropX,
+            y: nextY - 0.6,
+            z: nextZ,
+            vy: -4.0,
+          });
+        }
+      }
     }
 
+    // Falling Poop Bombs -> Splat into Slowing Poop Puddles on Track
+    for (let i = this.fallingPoops.length - 1; i >= 0; i--) {
+      const fp = this.fallingPoops[i];
+      fp.vy -= 22.0 * dt;
+      fp.y += fp.vy * dt;
+      fp.mesh.position.set(fp.x, fp.y, fp.z);
+      fp.mesh.rotation.x += dt * 5;
+
+      const floorY = this.getTrackHeightAtZ(fp.z);
+      if (fp.y <= floorY + 0.16) {
+        this.courseGroup.remove(fp.mesh);
+        this.fallingPoops.splice(i, 1);
+        this.spawnPoopPuddle(fp.x, floorY, fp.z, 9.0);
+        particles.spawnHitBurst(
+          new THREE.Vector3(fp.x, floorY + 0.25, fp.z),
+          '#713f12',
+          6
+        );
+      }
+    }
+
+    // Active Poop Puddles (밟으면 느려짐 + 질척 효과음 + 💩 배지)
+    for (let i = this.poopPuddles.length - 1; i >= 0; i--) {
+      const puddle = this.poopPuddles[i];
+      puddle.lifeLeft -= dt;
+      if (puddle.lifeLeft <= 0) {
+        this.courseGroup.remove(puddle.group);
+        this.poopPuddles.splice(i, 1);
+        continue;
+      }
+
+      if (puddle.lifeLeft < 1.2) {
+        puddle.group.scale.setScalar(Math.max(0.1, puddle.lifeLeft / 1.2));
+      }
+
+      if (!isRacing) continue;
+      let consumed = false;
+      for (const r of racers) {
+        if (r.state === 'FINISHED' || r.isSlowed()) continue;
+        const rPos = r.getPosition();
+        if (
+          Math.hypot(rPos.x - puddle.x, rPos.z - puddle.z) < 1.65 &&
+          Math.abs(rPos.y - puddle.y) < 1.95
+        ) {
+          r.applySlowDebuff(2.5, 0.44);
+          sound.playPoopSplat();
+          particles.spawnHitBurst(rPos, '#854d0e', 10);
+          consumed = true;
+          break;
+        }
+      }
+      if (consumed) {
+        this.courseGroup.remove(puddle.group);
+        this.poopPuddles.splice(i, 1);
+      }
+    }
+
+    // 14. Kart Turbo Boost Strips (⚡ 카트 가속 패드)
+    for (const pad of this.turboPads) {
+      pad.texture.offset.y -= dt * 2.4;
+      if (!isRacing) continue;
+
+      const padX = this.getTrackCenterX(pad.z) + pad.offsetX;
+      const padY = this.getTrackHeightAtZ(pad.z);
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = pad.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.75) continue;
+
+        const rPos = r.getPosition();
+        if (
+          Math.abs(rPos.x - padX) < pad.halfW + 0.55 &&
+          Math.abs(rPos.z - pad.z) < pad.halfL + 0.55 &&
+          Math.abs(rPos.y - padY) < 1.9
+        ) {
+          pad.hitCooldowns.set(r.id, this.elapsedTime);
+          r.applyTurboBoost(1.65, 13.5);
+          sound.playKartBoost();
+          particles.spawnHitBurst(rPos, '#facc15', 10);
+        }
+      }
+    }
+
+    // 15. Charging / Running T-Rexes sprinting toward oncoming Karts (-Z)
+    for (const trex of this.runningTRexes) {
+      trex.curZ -= trex.speedZ * dt;
+      if (trex.curZ < trex.zMin) {
+        trex.curZ = trex.zMax;
+      }
+
+      const wx = this.getTrackCenterX(trex.curZ) + trex.laneOffset;
+      const wy = this.getTrackHeightAtZ(trex.curZ);
+
+      const fadeDist = 3.5;
+      const fadeRatio = Math.min(
+        1,
+        Math.max(0, (trex.curZ - trex.zMin) / fadeDist),
+        Math.max(0, (trex.zMax - trex.curZ) / fadeDist)
+      );
+      const curScale = trex.scale * Math.max(0.05, fadeRatio);
+      const stridePhase = this.elapsedTime * 11.0 + trex.phase;
+      const stompLift = Math.abs(Math.sin(stridePhase)) * 0.22 * trex.scale;
+
+      trex.group.position.set(wx, wy + stompLift, trex.curZ);
+      trex.group.scale.setScalar(curScale);
+      trex.leftLeg.rotation.x = Math.sin(stridePhase) * 0.6;
+      trex.rightLeg.rotation.x = -Math.sin(stridePhase) * 0.6;
+      trex.jawPivot.rotation.x = Math.sin(this.elapsedTime * 7.5 + trex.phase) * 0.22;
+
+      trex.body.setNextKinematicTranslation({
+        x: wx,
+        y: fadeRatio < 0.45 ? wy - 12 : wy + 1.8 * trex.scale,
+        z: trex.curZ,
+      });
+
+      if (!isRacing || fadeRatio < 0.45) continue;
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = trex.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.7) continue;
+
+        const rPos = r.getPosition();
+        if (
+          Math.abs(rPos.x - wx) < 1.3 * trex.scale + 0.45 &&
+          Math.abs(rPos.z - trex.curZ) < 1.7 * trex.scale + 0.5 &&
+          Math.abs(rPos.y - (wy + 1.3 * trex.scale)) < 2.2 * trex.scale
+        ) {
+          trex.hitCooldowns.set(r.id, this.elapsedTime);
+          const dirX = rPos.x >= wx ? 1 : -1;
+          r.triggerRagdoll(
+            { x: dirX * 30 + (Math.random() - 0.5) * 8, y: 17, z: -8 },
+            undefined,
+            0.95
+          );
+          particles.spawnHitBurst(rPos, '#16a34a', 14);
+          sound.playDinoRoar();
+        }
+      }
+    }
+
+    // 16. Rolling Volcano Boulders hurtling downhill
+    for (const b of this.rollingBoulders) {
+      b.curZ += b.speedZ * dt;
+      if (b.curZ > b.zEnd) {
+        b.curZ = b.zStart;
+      }
+      const bx =
+        this.getTrackCenterX(b.curZ) +
+        Math.sin(this.elapsedTime * b.laneFreq + b.phase) * b.laneAmp;
+      const by = this.getTrackHeightAtZ(b.curZ) + b.radius;
+      b.mesh.position.set(bx, by, b.curZ);
+      b.mesh.rotation.x += (b.speedZ * dt) / b.radius;
+      b.mesh.rotation.z += dt * 1.4;
+      b.body.setNextKinematicTranslation({ x: bx, y: by, z: b.curZ });
+
+      if (!isRacing) continue;
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = b.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.65) continue;
+
+        const rPos = r.getPosition();
+        if (Math.hypot(rPos.x - bx, rPos.y - by, rPos.z - b.curZ) < b.radius + 0.85) {
+          b.hitCooldowns.set(r.id, this.elapsedTime);
+          const dirX = rPos.x >= bx ? 1 : -1;
+          r.triggerRagdoll(
+            { x: dirX * 25, y: 21, z: 10 },
+            undefined,
+            1.2
+          );
+          particles.spawnHitBurst(rPos, '#f97316', 12);
+          sound.playRagdollHit(1.3);
+        }
+      }
+    }
+
+    // 17. Erupting Lava Geysers (용암 간헐천)
+    for (const g of this.lavaGeysers) {
+      const gx = this.getTrackCenterX(g.z) + g.offsetX;
+      const gy = this.getTrackHeightAtZ(g.z);
+      const cycle = Math.sin(this.elapsedTime * g.freq + g.phase);
+      const isTelegraph = cycle > 0.25 && cycle <= 0.62;
+      const isErupting = cycle > 0.62;
+
+      const ringMat = g.ringMesh.material as THREE.MeshBasicMaterial;
+      if (isErupting) {
+        ringMat.color.setHex(0xef4444);
+        g.ringMesh.scale.setScalar(1.22);
+        g.plumeMesh.visible = true;
+        g.plumeMesh.position.set(gx, gy + 2.6, g.z);
+        g.plumeMesh.scale.set(
+          1 + Math.sin(this.elapsedTime * 24) * 0.12,
+          1,
+          1 + Math.cos(this.elapsedTime * 24) * 0.12
+        );
+      } else if (isTelegraph) {
+        ringMat.color.setHex(0xfacc15);
+        g.ringMesh.scale.setScalar(1.0 + Math.sin(this.elapsedTime * 20) * 0.15);
+        g.plumeMesh.visible = false;
+      } else {
+        ringMat.color.setHex(0xf97316);
+        g.ringMesh.scale.setScalar(0.95);
+        g.plumeMesh.visible = false;
+      }
+
+      if (!isRacing || !isErupting) continue;
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const lastHit = g.hitCooldowns.get(r.id) || 0;
+        if (this.elapsedTime - lastHit < 0.85) continue;
+
+        const rPos = r.getPosition();
+        if (
+          Math.hypot(rPos.x - gx, rPos.z - g.z) < g.radius + 0.5 &&
+          Math.abs(rPos.y - gy) < 3.6
+        ) {
+          g.hitCooldowns.set(r.id, this.elapsedTime);
+          r.triggerRagdoll(
+            { x: (Math.random() - 0.5) * 18, y: 34, z: -8 },
+            undefined,
+            1.35
+          );
+          particles.spawnHitBurst(rPos, '#fb923c', 14);
+          sound.playBumperBounce();
+        }
+      }
+    }
+
+    // 18. Scenery Giant Dinosaurs Idle Animations
     for (const anim of this.animatedDinoParts) {
       anim.part.rotation.x =
         anim.baseRotX + Math.sin(this.elapsedTime * anim.freq + anim.phase) * anim.amp;

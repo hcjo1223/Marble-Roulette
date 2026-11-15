@@ -18,6 +18,7 @@ export class CameraDirector {
   private orbitPitch: number = 0.42;
   private orbitDist: number = 14.5;
   private topPanZ: number = 55;
+  private currentFinishZ: number = FINISH_Z;
   private isDragging: boolean = false;
   private prevPointer = { x: 0, y: 0 };
   private pointerDownPos = { x: 0, y: 0 };
@@ -53,7 +54,7 @@ export class CameraDirector {
       this.prevPointer = { x: e.clientX, y: e.clientY };
 
       if (this.mode === 'TOP') {
-        this.topPanZ = Math.max(0, Math.min(135, this.topPanZ - dy * 0.25));
+        this.topPanZ = Math.max(0, Math.min(this.currentFinishZ + 4, this.topPanZ - dy * 0.25));
       } else {
         this.orbitYaw -= dx * 0.0075;
         this.orbitPitch = Math.max(0.06, Math.min(1.25, this.orbitPitch + dy * 0.0065));
@@ -156,12 +157,15 @@ export class CameraDirector {
     realDt: number,
     sortedRacers: RagdollRacer[],
     decisiveRacer: RagdollRacer | null,
-    trackCenterXAtZ?: (z: number) => number
+    trackCenterXAtZ?: (z: number) => number,
+    finishZ: number = FINISH_Z
   ): void {
+    this.currentFinishZ = finishZ;
     if (sortedRacers.length === 0) return;
 
     const activeRacers = sortedRacers.filter((r) => r.state !== 'FINISHED');
     const pool = activeRacers.length > 0 ? activeRacers : sortedRacers;
+    const isKartRace = pool[0]?.isKartMode ?? false;
 
     // Pull back slightly on portrait screens so racers on outer lanes remain visible
     const portraitScale = this.camera.aspect < 0.85 ? 1.24 : 1.0;
@@ -176,7 +180,7 @@ export class CameraDirector {
       desiredPos.set(
         p.x + 5.2 * portraitScale,
         p.y + 3.4 * portraitScale,
-        Math.min(FINISH_Z + 5.5, p.z + 7.2 * portraitScale)
+        Math.min(finishZ + 5.5, p.z + 7.2 * portraitScale)
       );
       desiredLook.set(p.x, p.y + 0.5, p.z + 1.2);
     } else if (this.mode === 'TOP') {
@@ -234,18 +238,24 @@ export class CameraDirector {
       const offsetZ = -Math.cos(this.orbitYaw) * effectiveDist;
       const offsetY = Math.sin(this.orbitPitch) * effectiveDist + 3.2;
 
-      const aheadZ = focusZ + 12.0;
+      const aheadZ = focusZ + (isKartRace ? 15.0 : 12.0);
       const aheadCX = trackCenterXAtZ ? trackCenterXAtZ(aheadZ) : focusX;
 
       desiredPos.set(focusX + offsetX, focusY + offsetY, focusZ + offsetZ);
       desiredLook.set(
         focusX * 0.45 + aheadCX * 0.55,
         focusY + 0.2,
-        focusZ + 7.5
+        focusZ + (isKartRace ? 9.0 : 7.5)
       );
     }
 
-    const smoothSpeed = this.isClimaxSlowMo ? 8.5 : this.mode === 'FREE' ? 9.5 : 6.0;
+    const smoothSpeed = this.isClimaxSlowMo
+      ? 8.5
+      : this.mode === 'FREE'
+      ? 10.0
+      : isKartRace
+      ? 8.2
+      : 6.0;
     this.currentPos.lerp(desiredPos, Math.min(1, realDt * smoothSpeed));
     this.currentLookAt.lerp(desiredLook, Math.min(1, realDt * (smoothSpeed + 2.5)));
 

@@ -13,7 +13,7 @@ import type {
 import { SoundManager } from './audio/SoundManager';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
-import { FINISH_Z, ObstacleCourse } from './world/ObstacleCourse';
+import { ObstacleCourse } from './world/ObstacleCourse';
 import { CameraDirector } from './camera/CameraDirector';
 
 const PALETTE = [
@@ -231,7 +231,7 @@ class RagdollDerbyGame {
         quickMapBtn.innerHTML =
           '<img src="./taebi-icon.jpg" alt="태비태권도" class="map-pill-icon" /><span>맵2: 태비태권도</span>';
       } else if (this.mapTheme === 'DINOSAUR') {
-        quickMapBtn.textContent = '🦖 맵3: 공룡 정글';
+        quickMapBtn.textContent = '🏎️ 맵3: 공룡 카트';
       } else {
         quickMapBtn.textContent = '🗺️ 맵1: 🏫 운동장';
       }
@@ -427,14 +427,15 @@ class RagdollDerbyGame {
     if (quickStartBtn) quickStartBtn.textContent = '🏁 시작';
 
     const cols = Math.min(8, Math.max(4, Math.ceil(Math.sqrt(entries.length * 1.5))));
-    const spacingX = 1.85;
-    const spacingZ = 1.55;
+    const isDinoKart = this.mapTheme === 'DINOSAUR';
+    const spacingX = isDinoKart ? 1.95 : 1.85;
+    const spacingZ = isDinoKart ? 2.0 : 1.55;
 
     entries.forEach((entry, idx) => {
       const row = Math.floor(idx / cols);
       const col = idx % cols;
       const itemsInRow = Math.min(cols, entries.length - row * cols);
-      const z = Math.max(-2.0, 6.2 - row * spacingZ);
+      const z = Math.max(-3.0, (isDinoKart ? 6.6 : 6.2) - row * spacingZ);
       const cx = this.course.getTrackCenterX(z);
       const x = cx + (col - (itemsInRow - 1) * 0.5) * spacingX + (Math.random() - 0.5) * 0.15;
       const y = this.course.getTrackHeightAtZ(z) + 1.45;
@@ -882,6 +883,10 @@ class RagdollDerbyGame {
           badgeHtml = `<span class="state-pill goal">🏁</span>`;
         } else if (r.state === 'RAGDOLL') {
           badgeHtml = `<span class="state-pill ragdoll">💫</span>`;
+        } else if (r.isSlowed()) {
+          badgeHtml = `<span class="state-pill ragdoll">💩</span>`;
+        } else if (r.isBoosted()) {
+          badgeHtml = `<span class="state-pill goal">⚡</span>`;
         }
 
         rowEl.innerHTML = `
@@ -894,7 +899,10 @@ class RagdollDerbyGame {
 
       const dotEl = document.getElementById(`minimap-dot-${r.id}`);
       if (dotEl) {
-        const pct = Math.min(97, Math.max(2, (r.getPosition().z / FINISH_Z) * 93));
+        const pct = Math.min(
+          97,
+          Math.max(2, (r.getPosition().z / this.course.finishZ) * 93)
+        );
         dotEl.style.left = `${pct}%`;
         dotEl.style.zIndex = rank === this.targetRank ? '10' : '2';
       }
@@ -979,6 +987,7 @@ class RagdollDerbyGame {
       null;
 
     const remainingFlicks = this.course.getRemainingFinishFlicks(this.racers.length);
+    const finishZ = this.course.finishZ;
     if (
       this.phase === 'RACING' &&
       !this.hasTriggeredAutoSlowMo &&
@@ -989,8 +998,8 @@ class RagdollDerbyGame {
       const z = decisiveRacer.getPosition().z;
       const canSlowMo =
         remainingFlicks === 0 ||
-        (z >= FINISH_Z - 3.2 && this.course.hasBeenFlicked(decisiveRacer.id));
-      if (canSlowMo && z >= FINISH_Z - 9.0 && z < FINISH_Z) {
+        (z >= finishZ - 3.2 && this.course.hasBeenFlicked(decisiveRacer.id));
+      if (canSlowMo && z >= finishZ - 9.0 && z < finishZ) {
         this.hasTriggeredAutoSlowMo = true;
         this.autoSlowMoTimer = 2.3;
         this.sound.playSlowMoTrigger();
@@ -1038,7 +1047,8 @@ class RagdollDerbyGame {
         (z) => this.course.getTrackHalfWidthAtZ(z),
         (z) => this.course.getTrackHeightAtZ(z),
         () => this.sound.playJump(),
-        (respawnPos) => this.particles.spawnRespawnFlash(respawnPos)
+        (respawnPos) => this.particles.spawnRespawnFlash(respawnPos),
+        finishZ
       );
 
       if (this.phase === 'RACING' && r.state !== 'FINISHED') {
@@ -1046,7 +1056,7 @@ class RagdollDerbyGame {
         const withinTrackWidth =
           Math.abs(pos.x - this.course.getTrackCenterX(pos.z)) <=
           this.course.getTrackHalfWidthAtZ(pos.z) + 0.9;
-        if (pos.z >= FINISH_Z && withinTrackWidth) {
+        if (pos.z >= finishZ && withinTrackWidth) {
           this.finishedRacers.push(r);
           const order = this.finishedRacers.length;
           r.markFinished(order, this.raceElapsed);
@@ -1094,7 +1104,8 @@ class RagdollDerbyGame {
       realDt,
       this.sortedRacers,
       decisiveRacer,
-      (z) => this.course.getTrackCenterX(z)
+      (z) => this.course.getTrackCenterX(z),
+      finishZ
     );
 
     this.uiUpdateAccum += realDt;
