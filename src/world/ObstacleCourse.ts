@@ -1774,6 +1774,65 @@ export class ObstacleCourse {
     finishGroup.add(topBanner);
 
     this.courseGroup.add(finishGroup);
+
+    // Solid cushioned end wall at the end of the finish zone (Z = 146.5) so racers never fall off
+    const endZ = 146.5;
+    const endCX = this.getTrackCenterX(endZ);
+    const endY = this.getTrackHeightAtZ(endZ);
+    const endYaw = this.getTrackYawAtZ(endZ);
+    const endWallHeight = 3.6;
+
+    const endWallGroup = new THREE.Group();
+    endWallGroup.position.set(endCX, endY, endZ);
+    endWallGroup.rotation.y = endYaw;
+
+    const endWallMesh = new THREE.Mesh(
+      new THREE.BoxGeometry(20.6, endWallHeight, 1.0),
+      new THREE.MeshStandardMaterial({
+        color: isTkd ? 0x1e293b : 0x16a34a,
+        roughness: 0.5,
+      })
+    );
+    endWallMesh.position.y = endWallHeight * 0.5;
+    endWallMesh.castShadow = true;
+    endWallMesh.receiveShadow = true;
+    endWallGroup.add(endWallMesh);
+
+    const endWallPad = new THREE.Mesh(
+      new THREE.BoxGeometry(19.6, 1.1, 1.15),
+      new THREE.MeshStandardMaterial({
+        map: checkTex,
+        roughness: 0.35,
+      })
+    );
+    endWallPad.position.y = 1.8;
+    endWallGroup.add(endWallPad);
+
+    const endWallCap = new THREE.Mesh(
+      new THREE.BoxGeometry(20.8, 0.32, 1.12),
+      new THREE.MeshStandardMaterial({
+        color: isTkd ? 0xdc2626 : 0xfacc15,
+        roughness: 0.35,
+      })
+    );
+    endWallCap.position.y = endWallHeight + 0.14;
+    endWallGroup.add(endWallCap);
+
+    this.courseGroup.add(endWallGroup);
+
+    const endQuat = new THREE.Quaternion().setFromEuler(new THREE.Euler(0, endYaw, 0));
+    const endBody = this.createBody(
+      RAPIER.RigidBodyDesc.fixed()
+        .setTranslation(endCX, endY + 2.6, endZ)
+        .setRotation({ x: endQuat.x, y: endQuat.y, z: endQuat.z, w: endQuat.w })
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(10.8, 3.0, 0.65)
+        .setFriction(0.5)
+        .setRestitution(0.25)
+        .setCollisionGroups(this.envCollisionGroup()),
+      endBody
+    );
   }
 
   public resetCourseState(): void {

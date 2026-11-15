@@ -604,8 +604,33 @@ export class RagdollRacer {
     }
 
     if (this.state === 'FINISHED') {
-      // Celebratory hops after crossing finish line
+      // Celebratory hops & gentle slowdown inside the walled finish zone
+      const expectedFinishY = trackHeightAtZ(pos.z);
+      if (pos.y < expectedFinishY - 2.0 || pos.z > 147.0) {
+        const safeFinishZ = 138.0;
+        const safeFinishCX = trackCenterXAtZ(safeFinishZ);
+        this.teleportTo(
+          new THREE.Vector3(
+            safeFinishCX + (Math.random() - 0.5) * 8.0,
+            trackHeightAtZ(safeFinishZ) + 1.8,
+            safeFinishZ
+          )
+        );
+        this.state = 'FINISHED';
+        this.drawFaceTexture('WINNER');
+        this.updateBillboardLabel(true);
+        return;
+      }
+
       this.maintainUprightPose(0, dt, 0.6);
+      this.torsoBody.applyImpulse(
+        {
+          x: -vel.x * 2.5 * dt,
+          y: 0,
+          z: (pos.z > 144.5 ? -vel.z * 5.0 - 8.0 : -vel.z * 2.8) * dt,
+        },
+        true
+      );
       if (Math.random() < dt * 1.8 && Math.abs(vel.y) < 1.2) {
         this.torsoBody.applyImpulse({ x: 0, y: 18, z: 0 }, true);
       }
