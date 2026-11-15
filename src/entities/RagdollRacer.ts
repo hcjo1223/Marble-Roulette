@@ -235,6 +235,7 @@ export class RagdollRacer {
     this.drawFaceTexture('NORMAL');
 
     const isTaekwondo = mapTheme === 'TAEKWONDO';
+    const isDinosaur = mapTheme === 'DINOSAUR';
     const skinColor = new THREE.Color('#fde047'); // Classic Roblox yellow head/hands
     const torsoMat = new THREE.MeshStandardMaterial({
       color: isTaekwondo ? new THREE.Color('#f8fafc') : new THREE.Color(this.color),
@@ -302,6 +303,19 @@ export class RagdollRacer {
       const headband = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.12, 0.58), bandMat);
       headband.position.set(0, 0.14, 0);
       this.headMesh.add(headband);
+    } else if (isDinosaur) {
+      // Cute Jungle Explorer Hat with team-colored band!
+      const hatMat = new THREE.MeshStandardMaterial({ color: 0xd97706, roughness: 0.55 });
+      const hatBrim = new THREE.Mesh(new THREE.BoxGeometry(0.76, 0.07, 0.76), hatMat);
+      hatBrim.position.set(0, 0.27, 0);
+      const hatCrown = new THREE.Mesh(new THREE.BoxGeometry(0.48, 0.18, 0.48), hatMat);
+      hatCrown.position.set(0, 0.38, 0);
+      const hatRibbon = new THREE.Mesh(
+        new THREE.BoxGeometry(0.5, 0.07, 0.5),
+        new THREE.MeshStandardMaterial({ color: new THREE.Color(this.color), roughness: 0.3 })
+      );
+      hatRibbon.position.set(0, 0.33, 0);
+      this.headMesh.add(hatBrim, hatCrown, hatRibbon);
     }
 
     // Arms & Legs meshes

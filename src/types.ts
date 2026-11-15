@@ -2,9 +2,11 @@ export type CameraMode = 'LEAD' | 'LAST' | 'TOP' | 'FREE';
 
 export type WinningRule = 'FIRST' | 'LAST' | 'NTH';
 
-export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO';
+export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO' | 'DINOSAUR';
 
 export type ObstacleDensity = 'NORMAL' | 'LIGHT';
+
+export type FlickMode = 'OFF' | 'DOUBLE' | 'CHAOS';
 
 export type RacerState = 'WAITING' | 'RUNNING' | 'RAGDOLL' | 'RECOVERING' | 'FINISHED';
 

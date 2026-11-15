@@ -37,7 +37,7 @@
             type="button"
             class="stage-pill map-switch-pill"
             id="btn-quick-map-toggle"
-            title="클릭하여 맵 테마 변경 (운동장 ↔ 태비태권도)"
+            title="클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글)"
           >
             🗺️ 맵1: 🏫 운동장
           </button>
@@ -48,6 +48,14 @@
             title="클릭하여 장애물 개수 변경 (많음 ↔ 적음)"
           >
             🔥 장애물: 많음
+          </button>
+          <button
+            type="button"
+            class="stage-pill flick-switch-pill"
+            id="btn-quick-flick-toggle"
+            title="클릭하여 결승 직전 딱밤 횟수 변경 (2명 → 4명 → 끔)"
+          >
+            👆 딱밤: 2명
           </button>
           <div class="stage-pill" id="hud-zone-badge">🏠 교실</div>
           <div class="stage-pill timer-pill" id="hud-timer">0.0초</div>
@@ -71,9 +79,6 @@
         </button>
         <button id="btn-quick-start" class="pill-btn start-pill">
           🏁 시작
-        </button>
-        <button id="btn-blast-test" class="pill-btn" title="전체 래그돌 충격파">
-          💥 <span class="hide-sm">충격파</span>
         </button>
         <button id="btn-bgm-toggle" class="pill-btn muted" title="배경음악 켜기/끄기">
           🎵
@@ -117,6 +122,9 @@
               <img src="./taebi-icon.jpg" alt="태비태권도 아이콘" class="map-btn-icon" />
               <span>맵2: 태비태권도</span>
             </button>
+            <button type="button" class="map-btn" data-map="DINOSAUR">
+              🦖 맵3: 공룡 정글 탈출 (티라노·트리케라·화산)
+            </button>
           </div>
         </div>
 
@@ -128,6 +136,21 @@
             </button>
             <button type="button" class="density-btn" data-density="LIGHT">
               🌿 장애물 적음
+            </button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <span class="field-label">👆 결승 직전 거대 딱밤 스위치</span>
+          <div class="flick-selector" role="radiogroup" aria-label="딱밤 횟수 선택">
+            <button type="button" class="flick-btn" data-flick="OFF">
+              🚫 끔
+            </button>
+            <button type="button" class="flick-btn active" data-flick="DOUBLE">
+              👆 2명 (기본)
+            </button>
+            <button type="button" class="flick-btn" data-flick="CHAOS">
+              💥 4명 대혼란
             </button>
           </div>
         </div>
@@ -187,6 +210,22 @@
 
       <div id="flick-banner" class="flick-banner hidden">
         <span id="flick-banner-text">👆💥 거대 손가락 딱밤! 대역전 찬스!</span>
+      </div>
+
+      <!-- Teacher Prank Intervention Bar (수업용 장난 버튼) -->
+      <div id="prank-bar" aria-label="사범님 장난 버튼">
+        <button type="button" class="prank-pill blast" id="btn-prank-blast" title="전체 래그돌 날리기 충격파">
+          💥 충격파
+        </button>
+        <button type="button" class="prank-pill jump" id="btn-prank-jump" title="전원 하늘로 대점프!">
+          🚀 대점프
+        </button>
+        <button type="button" class="prank-pill whirl" id="btn-prank-whirl" title="좌우 회오리 바람으로 자리 뒤섞기!">
+          🌀 회오리
+        </button>
+        <button type="button" class="prank-pill flick" id="btn-prank-flick" title="현재 1등에게 즉시 거대 딱밤 발사!">
+          👆 1등 딱밤!
+        </button>
       </div>
 
       <!-- Bottom Camera & Slow-Motion Dock -->

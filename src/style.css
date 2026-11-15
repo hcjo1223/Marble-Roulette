@@ -90,7 +90,7 @@ body.slowmo-active #letterbox-bottom {
   top: max(12px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  width: min(460px, calc(100vw - 380px));
+  width: min(560px, calc(100vw - 380px));
   z-index: 20;
   display: flex;
   flex-direction: column;
@@ -138,6 +138,11 @@ body.slowmo-active #letterbox-bottom {
   color: #991b1b;
 }
 
+.map-switch-pill.dino-active {
+  background: #dcfce7;
+  color: #166534;
+}
+
 .density-switch-pill {
   pointer-events: auto;
   background: #ffedd5;
@@ -156,6 +161,27 @@ body.slowmo-active #letterbox-bottom {
 
 .density-switch-pill.light-active:hover {
   background: #bbf7d0;
+}
+
+.flick-switch-pill {
+  pointer-events: auto;
+  background: #fef08a;
+  color: #854d0e;
+  cursor: pointer;
+}
+
+.flick-switch-pill:hover {
+  background: #fde047;
+}
+
+.flick-switch-pill.off-active {
+  background: #f1f5f9;
+  color: #64748b;
+}
+
+.flick-switch-pill.chaos-active {
+  background: #ffe4e6;
+  color: #9f1239;
 }
 
 .map-pill-icon {
@@ -563,6 +589,16 @@ button:active {
   border-color: #dc2626;
 }
 
+.map-btn[data-map="DINOSAUR"] {
+  grid-column: span 2;
+}
+
+.map-btn[data-map="DINOSAUR"].active {
+  background: #dcfce7;
+  color: #166534;
+  border-color: #16a34a;
+}
+
 .density-selector {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -589,6 +625,40 @@ button:active {
   background: #dcfce7;
   color: #166534;
   border-color: #16a34a;
+}
+
+.flick-selector {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+}
+
+.flick-btn {
+  background: #f1f5f9;
+  color: var(--ink-muted);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 6px;
+  font-size: 0.76rem;
+  font-weight: 800;
+}
+
+.flick-btn.active {
+  background: #fef08a;
+  color: #854d0e;
+  border-color: #eab308;
+}
+
+.flick-btn[data-flick="OFF"].active {
+  background: #e2e8f0;
+  color: #334155;
+  border-color: #64748b;
+}
+
+.flick-btn[data-flick="CHAOS"].active {
+  background: #ffe4e6;
+  color: #9f1239;
+  border-color: #f43f5e;
 }
 
 .rule-selector {
@@ -669,6 +739,58 @@ button:active {
   width: 100%;
 }
 
+/* Teacher Prank Intervention Bar */
+#prank-bar {
+  position: absolute;
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 54px);
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 21;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.86);
+  border: 2px solid var(--border-ink);
+  border-radius: 999px;
+  padding: 5px 8px;
+  box-shadow: 0 3px 0 rgba(15, 23, 42, 0.22);
+}
+
+.prank-pill {
+  border: 1.5px solid var(--border-ink);
+  border-radius: 999px;
+  padding: 5px 11px;
+  font-size: 0.76rem;
+  font-weight: 800;
+  white-space: nowrap;
+  color: var(--ink-dark);
+  background: #f8fafc;
+}
+
+.prank-pill.blast {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.prank-pill.jump {
+  background: #e0f2fe;
+  color: #075985;
+}
+
+.prank-pill.whirl {
+  background: #f3e8ff;
+  color: #6b21a8;
+}
+
+.prank-pill.flick {
+  background: #fef08a;
+  color: #854d0e;
+}
+
+.prank-pill:hover {
+  filter: brightness(0.96);
+}
+
 /* Bottom Camera & Slow-Motion Pill Dock */
 #camera-dock {
   position: absolute;
@@ -729,7 +851,7 @@ button:active {
 
 .slowmo-banner {
   position: absolute;
-  top: 86px;
+  top: 118px;
   left: 50%;
   transform: translateX(-50%);
   background: #f43f5e;
@@ -749,7 +871,7 @@ button:active {
 
 .flick-banner {
   position: absolute;
-  top: 86px;
+  top: 118px;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #facc15 0%, #f97316 100%);
@@ -961,11 +1083,11 @@ button:active {
   }
 
   #leaderboard-panel {
-    top: calc(max(8px, env(safe-area-inset-top)) + 106px);
+    top: calc(max(8px, env(safe-area-inset-top)) + 116px);
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: calc(100dvh - 180px);
+    max-height: calc(100dvh - 220px);
     background: rgba(255, 255, 255, 0.95);
     border: 2.5px solid var(--border-ink);
     border-radius: 16px;
@@ -984,7 +1106,7 @@ button:active {
     left: 8px;
     right: 8px;
     width: auto;
-    max-height: calc(100dvh - 130px);
+    max-height: calc(100dvh - 175px);
   }
 
   #setup-panel.collapsed {
@@ -994,6 +1116,23 @@ button:active {
   #participants-input,
   .nth-row input {
     font-size: 16px;
+  }
+
+  #prank-bar {
+    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px);
+    left: 8px;
+    right: 8px;
+    transform: none;
+    justify-content: space-between;
+    padding: 4px 6px;
+    gap: 4px;
+  }
+
+  .prank-pill {
+    padding: 5px 5px;
+    font-size: 0.68rem;
+    flex: 1;
+    text-align: center;
   }
 
   #camera-dock {
@@ -1014,13 +1153,13 @@ button:active {
   }
 
   .slowmo-banner {
-    top: calc(max(8px, env(safe-area-inset-top)) + 106px);
+    top: calc(max(8px, env(safe-area-inset-top)) + 116px);
     font-size: 0.72rem;
   }
 
   .flick-banner {
-    top: calc(max(8px, env(safe-area-inset-top)) + 140px);
-    font-size: 0.78rem;
+    top: calc(max(8px, env(safe-area-inset-top)) + 150px);
+    font-size: 0.76rem;
     padding: 5px 12px;
   }
 }

@@ -4,6 +4,7 @@ import RAPIER from '@dimforge/rapier3d-compat';
 import confetti from 'canvas-confetti';
 import type {
   CameraMode,
+  FlickMode,
   MapTheme,
   ObstacleDensity,
   ParticipantEntry,
@@ -55,6 +56,7 @@ class RagdollDerbyGame {
 
   private mapTheme: MapTheme = 'PLAYGROUND';
   private obstacleDensity: ObstacleDensity = 'NORMAL';
+  private flickMode: FlickMode = 'DOUBLE';
   private winningRule: WinningRule = 'FIRST';
   private targetRank: number = 1;
 
@@ -74,6 +76,19 @@ class RagdollDerbyGame {
     return window.innerWidth <= 768;
   }
 
+  private applySkyTheme(): void {
+    if (this.mapTheme === 'TAEKWONDO') {
+      this.scene.background = new THREE.Color('#fde68a');
+      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
+    } else if (this.mapTheme === 'DINOSAUR') {
+      this.scene.background = new THREE.Color('#bbf7d0');
+      this.scene.fog = new THREE.FogExp2('#dcfce7', 0.0028);
+    } else {
+      this.scene.background = new THREE.Color('#cce7ff');
+      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
+    }
+  }
+
   public async init(): Promise<void> {
     await RAPIER.init();
 
@@ -83,22 +98,24 @@ class RagdollDerbyGame {
     const mapParam = urlParams.get('map')?.toUpperCase();
     if (mapParam === 'TAEKWONDO' || mapParam === 'TAEBI') {
       this.mapTheme = 'TAEKWONDO';
+    } else if (mapParam === 'DINOSAUR' || mapParam === 'DINO') {
+      this.mapTheme = 'DINOSAUR';
     }
     const densityParam = urlParams.get('density')?.toUpperCase();
     if (densityParam === 'LIGHT') {
       this.obstacleDensity = 'LIGHT';
     }
+    const flickParam = urlParams.get('flick')?.toUpperCase();
+    if (flickParam === 'OFF' || flickParam === '0') {
+      this.flickMode = 'OFF';
+    } else if (flickParam === 'CHAOS' || flickParam === '4') {
+      this.flickMode = 'CHAOS';
+    }
 
     // 1. Bright Sunny Daylight Three.js Scene
     const container = document.getElementById('canvas-container')!;
     this.scene = new THREE.Scene();
-    if (this.mapTheme === 'TAEKWONDO') {
-      this.scene.background = new THREE.Color('#fde68a');
-      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
-    } else {
-      this.scene.background = new THREE.Color('#cce7ff');
-      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
-    }
+    this.applySkyTheme();
 
     const camera = new THREE.PerspectiveCamera(
       isMobile ? 66 : 56,
@@ -145,7 +162,8 @@ class RagdollDerbyGame {
       this.world,
       this.scene,
       this.mapTheme,
-      this.obstacleDensity
+      this.obstacleDensity,
+      this.flickMode
     );
     this.bindCourseCallbacks();
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
@@ -159,6 +177,7 @@ class RagdollDerbyGame {
     this.bindUIEvents();
     this.syncMapThemeUI();
     this.syncDensityUI();
+    this.syncFlickModeUI();
     this.rebuildRacersFromInput();
 
     const handleResize = () => {
@@ -174,17 +193,29 @@ class RagdollDerbyGame {
     requestAnimationFrame((now) => this.animate(now));
   }
 
+  private showBannerMessage(msg: string, duration: number = 2.2): void {
+    const banner = document.getElementById('flick-banner');
+    const textEl = document.getElementById('flick-banner-text');
+    if (banner && textEl) {
+      textEl.textContent = msg;
+      banner.classList.remove('hidden');
+      banner.style.animation = 'none';
+      void banner.offsetWidth;
+      banner.style.animation = '';
+      this.flickBannerTimer = duration;
+    }
+  }
+
   private bindCourseCallbacks(): void {
-    this.course.onFinishFlick = (racer, flickNum) => {
-      const banner = document.getElementById('flick-banner');
-      const textEl = document.getElementById('flick-banner-text');
-      if (banner && textEl) {
-        textEl.textContent = `👆💥 ${flickNum}등 [${racer.name}] 거대 딱밤 맞고 날아감! 대역전 찬스!`;
-        banner.classList.remove('hidden');
-        banner.style.animation = 'none';
-        void banner.offsetWidth;
-        banner.style.animation = '';
-        this.flickBannerTimer = 2.2;
+    this.course.onFinishFlick = (racer, flickNum, isManual) => {
+      if (isManual) {
+        this.showBannerMessage(
+          `👆💥 사범님 장난 딱밤! [${racer.name}] 날아갔다!`
+        );
+      } else {
+        this.showBannerMessage(
+          `👆💥 ${flickNum}등 [${racer.name}] 거대 딱밤 맞고 날아감! 대역전 찬스!`
+        );
       }
     };
   }
@@ -196,11 +227,16 @@ class RagdollDerbyGame {
 
     const quickMapBtn = document.getElementById('btn-quick-map-toggle');
     if (quickMapBtn) {
-      quickMapBtn.innerHTML =
-        this.mapTheme === 'TAEKWONDO'
-          ? '<img src="./taebi-icon.jpg" alt="태비태권도" class="map-pill-icon" /><span>맵2: 태비태권도</span>'
-          : '🗺️ 맵1: 🏫 운동장';
+      if (this.mapTheme === 'TAEKWONDO') {
+        quickMapBtn.innerHTML =
+          '<img src="./taebi-icon.jpg" alt="태비태권도" class="map-pill-icon" /><span>맵2: 태비태권도</span>';
+      } else if (this.mapTheme === 'DINOSAUR') {
+        quickMapBtn.textContent = '🦖 맵3: 공룡 정글';
+      } else {
+        quickMapBtn.textContent = '🗺️ 맵1: 🏫 운동장';
+      }
       quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
+      quickMapBtn.classList.toggle('dino-active', this.mapTheme === 'DINOSAUR');
     }
   }
 
@@ -217,6 +253,31 @@ class RagdollDerbyGame {
     }
   }
 
+  private syncFlickModeUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.flick-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.flick === this.flickMode);
+    });
+
+    const quickFlickBtn = document.getElementById('btn-quick-flick-toggle');
+    if (quickFlickBtn) {
+      if (this.flickMode === 'OFF') {
+        quickFlickBtn.textContent = '🚫 딱밤: 끔';
+      } else if (this.flickMode === 'CHAOS') {
+        quickFlickBtn.textContent = '💥 딱밤: 4명';
+      } else {
+        quickFlickBtn.textContent = '👆 딱밤: 2명';
+      }
+      quickFlickBtn.classList.toggle('off-active', this.flickMode === 'OFF');
+      quickFlickBtn.classList.toggle('chaos-active', this.flickMode === 'CHAOS');
+    }
+  }
+
+  private switchFlickMode(newMode: FlickMode): void {
+    this.flickMode = newMode;
+    this.syncFlickModeUI();
+    this.course.setFlickMode(newMode);
+  }
+
   private switchMapTheme(newTheme: MapTheme): void {
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
@@ -225,15 +286,7 @@ class RagdollDerbyGame {
     }
 
     this.mapTheme = newTheme;
-
-    if (this.mapTheme === 'TAEKWONDO') {
-      this.scene.background = new THREE.Color('#fde68a');
-      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
-    } else {
-      this.scene.background = new THREE.Color('#cce7ff');
-      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
-    }
-
+    this.applySkyTheme();
     this.syncMapThemeUI();
 
     this.course.dispose();
@@ -241,7 +294,8 @@ class RagdollDerbyGame {
       this.world,
       this.scene,
       this.mapTheme,
-      this.obstacleDensity
+      this.obstacleDensity,
+      this.flickMode
     );
     this.bindCourseCallbacks();
     this.rebuildRacersFromInput();
@@ -262,7 +316,8 @@ class RagdollDerbyGame {
       this.world,
       this.scene,
       this.mapTheme,
-      this.obstacleDensity
+      this.obstacleDensity,
+      this.flickMode
     );
     this.bindCourseCallbacks();
     this.rebuildRacersFromInput();
@@ -454,6 +509,9 @@ class RagdollDerbyGame {
       } else if (step === 0) {
         textEl.textContent = 'GO!';
         this.sound.playCountdownBeep(true);
+        if (this.mapTheme === 'DINOSAUR') {
+          this.sound.playDinoRoar();
+        }
         this.course.openStartGate();
         this.phase = 'RACING';
 
@@ -489,6 +547,68 @@ class RagdollDerbyGame {
         1.4
       );
       this.particles.spawnHitBurst(pos, r.color, 6);
+    }
+    this.showBannerMessage('💥 사범님 장난! 전체 래그돌 충격파 발사!', 1.8);
+  }
+
+  private triggerGlobalBigJump(): void {
+    this.sound.playBigJump();
+    for (const r of this.racers) {
+      if (r.state === 'FINISHED') continue;
+      const pos = r.getPosition();
+      r.setAllBodiesLinvel({
+        x: (Math.random() - 0.5) * 8,
+        y: 22 + Math.random() * 8,
+        z: 6 + Math.random() * 6,
+      });
+      r.triggerRagdoll(
+        {
+          x: (Math.random() - 0.5) * 14,
+          y: 34 + Math.random() * 12,
+          z: 8 + Math.random() * 8,
+        },
+        {
+          x: (Math.random() - 0.5) * 18,
+          y: (Math.random() - 0.5) * 18,
+          z: (Math.random() - 0.5) * 18,
+        },
+        1.1
+      );
+      this.particles.spawnHitBurst(pos, '#38bdf8', 7);
+    }
+    this.showBannerMessage('🚀 사범님 장난! 전원 하늘로 대점프!!', 1.8);
+  }
+
+  private triggerWhirlwindPrank(): void {
+    this.sound.playWhirlwind();
+    for (const r of this.racers) {
+      if (r.state === 'FINISHED') continue;
+      const pos = r.getPosition();
+      const cx = this.course.getTrackCenterX(pos.z);
+      const offset = pos.x - cx;
+      const crossDir = offset >= 0 ? -1 : 1;
+      r.triggerRagdoll(
+        {
+          x: crossDir * (34 + Math.random() * 14),
+          y: 18 + Math.random() * 10,
+          z: (Math.random() - 0.5) * 32,
+        },
+        {
+          x: (Math.random() - 0.5) * 24,
+          y: crossDir * 28,
+          z: (Math.random() - 0.5) * 24,
+        },
+        1.3
+      );
+      this.particles.spawnHitBurst(pos, '#a855f7', 7);
+    }
+    this.showBannerMessage('🌀 사범님 장난! 회오리 바람으로 자리 대혼란!', 1.8);
+  }
+
+  private triggerManualFlickPrank(): void {
+    const target = this.course.triggerManualLeaderFlick(this.racers);
+    if (!target) {
+      this.showBannerMessage('👆 딱밤 손가락이 출동 중이에요! 잠시만요!', 1.3);
     }
   }
 
@@ -534,7 +654,12 @@ class RagdollDerbyGame {
     });
 
     document.getElementById('btn-quick-map-toggle')!.addEventListener('click', () => {
-      const nextTheme: MapTheme = this.mapTheme === 'PLAYGROUND' ? 'TAEKWONDO' : 'PLAYGROUND';
+      const nextTheme: MapTheme =
+        this.mapTheme === 'PLAYGROUND'
+          ? 'TAEKWONDO'
+          : this.mapTheme === 'TAEKWONDO'
+          ? 'DINOSAUR'
+          : 'PLAYGROUND';
       this.switchMapTheme(nextTheme);
     });
 
@@ -558,6 +683,25 @@ class RagdollDerbyGame {
         const density = btn.dataset.density as ObstacleDensity;
         if (density && density !== this.obstacleDensity) {
           this.switchObstacleDensity(density);
+        }
+      });
+    });
+
+    document.getElementById('btn-quick-flick-toggle')!.addEventListener('click', () => {
+      const nextFlick: FlickMode =
+        this.flickMode === 'DOUBLE'
+          ? 'CHAOS'
+          : this.flickMode === 'CHAOS'
+          ? 'OFF'
+          : 'DOUBLE';
+      this.switchFlickMode(nextFlick);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.flick-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const mode = btn.dataset.flick as FlickMode;
+        if (mode && mode !== this.flickMode) {
+          this.switchFlickMode(mode);
         }
       });
     });
@@ -602,8 +746,17 @@ class RagdollDerbyGame {
       this.rebuildRacersFromInput();
     });
 
-    document.getElementById('btn-blast-test')!.addEventListener('click', () => {
+    document.getElementById('btn-prank-blast')!.addEventListener('click', () => {
       this.triggerGlobalRagdollBlast();
+    });
+    document.getElementById('btn-prank-jump')!.addEventListener('click', () => {
+      this.triggerGlobalBigJump();
+    });
+    document.getElementById('btn-prank-whirl')!.addEventListener('click', () => {
+      this.triggerWhirlwindPrank();
+    });
+    document.getElementById('btn-prank-flick')!.addEventListener('click', () => {
+      this.triggerManualFlickPrank();
     });
 
     const btnSound = document.getElementById('btn-sound-toggle')!;
