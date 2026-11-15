@@ -125,6 +125,18 @@ interface ShockwaveDrumData {
   hitCooldowns: Map<string, number>;
 }
 
+interface GiantFlickHandData {
+  slotIndex: number;
+  root: THREE.Group;
+  middleFingerPivot: THREE.Group;
+  shockwaveMesh: THREE.Mesh;
+  comicSprite: THREE.Sprite;
+  phase: 'IDLE' | 'WINDUP' | 'IMPACT' | 'DONE';
+  phaseTimer: number;
+  targetRacer: RagdollRacer | null;
+  impactPos: THREE.Vector3;
+}
+
 export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
@@ -148,6 +160,10 @@ export class ObstacleCourse {
   private springboards: SpringboardData[] = [];
   private shockwaveDrums: ShockwaveDrumData[] = [];
 
+  private giantFlickHands: GiantFlickHandData[] = [];
+  private flickedRacerIds: Set<string> = new Set();
+  public onFinishFlick?: (racer: RagdollRacer, flickNumber: number) => void;
+
   private elapsedTime: number = 0;
 
   constructor(world: RAPIER.World, scene: THREE.Scene, mapTheme: MapTheme = 'PLAYGROUND') {
@@ -165,6 +181,8 @@ export class ObstacleCourse {
     } else {
       this.buildPlaygroundCourse();
     }
+
+    this.buildFinishFlickHands();
   }
 
   private createBody(desc: RAPIER.RigidBodyDesc): RAPIER.RigidBody {
@@ -1868,6 +1886,225 @@ export class ObstacleCourse {
     );
   }
 
+  private createComicFlickSprite(): THREE.Sprite {
+    const canvas = document.createElement('canvas');
+    canvas.width = 340;
+    canvas.height = 130;
+    const ctx = canvas.getContext('2d')!;
+
+    ctx.fillStyle = '#fef08a';
+    ctx.strokeStyle = '#0f172a';
+    ctx.lineWidth = 8;
+    ctx.beginPath();
+    ctx.roundRect(12, 14, 316, 102, 30);
+    ctx.fill();
+    ctx.stroke();
+
+    ctx.font = '900 54px "Plus Jakarta Sans", "Pretendard", sans-serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.lineWidth = 10;
+    ctx.strokeStyle = '#0f172a';
+    ctx.strokeText('💥 딱밤!!', 170, 66);
+    ctx.fillStyle = '#ef4444';
+    ctx.fillText('💥 딱밤!!', 170, 66);
+
+    const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    const mat = new THREE.SpriteMaterial({
+      map: tex,
+      transparent: true,
+      depthTest: false,
+      toneMapped: false,
+    });
+    const sprite = new THREE.Sprite(mat);
+    sprite.scale.set(5.4, 2.05, 1);
+    sprite.renderOrder = 1600;
+    sprite.visible = false;
+    return sprite;
+  }
+
+  private buildFinishFlickHands(): void {
+    const skinMat = new THREE.MeshStandardMaterial({
+      color: 0xffccb3,
+      roughness: 0.42,
+      metalness: 0.02,
+    });
+    const skinAccentMat = new THREE.MeshStandardMaterial({
+      color: 0xf4a88c,
+      roughness: 0.48,
+    });
+    const nailMat = new THREE.MeshStandardMaterial({
+      color: 0xfff5f5,
+      roughness: 0.18,
+      metalness: 0.05,
+    });
+    const cuffRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
+    const cuffWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
+
+    for (let slotIndex = 0; slotIndex < 2; slotIndex++) {
+      const root = new THREE.Group();
+
+      // Forearm & Wristband (descending from above)
+      const forearm = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.68, 0.78, 2.2, 16),
+        skinMat
+      );
+      forearm.position.set(0, 2.55, 0.1);
+      forearm.castShadow = true;
+      root.add(forearm);
+
+      const cuffRed = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.84, 0.84, 0.62, 18),
+        cuffRedMat
+      );
+      cuffRed.position.set(0, 1.5, 0.1);
+      root.add(cuffRed);
+
+      const cuffStripe = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.86, 0.86, 0.2, 18),
+        cuffWhiteMat
+      );
+      cuffStripe.position.set(0, 1.5, 0.1);
+      root.add(cuffStripe);
+
+      // Chunky Cartoon Palm (back of hand faces -Z toward approaching racers; palm faces +Z)
+      const palm = new THREE.Mesh(new THREE.BoxGeometry(2.15, 2.0, 0.82), skinMat);
+      palm.position.set(0, 0.1, 0);
+      palm.castShadow = true;
+      root.add(palm);
+
+      const knucklePad = new THREE.Mesh(
+        new THREE.CylinderGeometry(0.42, 0.42, 2.15, 14),
+        skinMat
+      );
+      knucklePad.rotation.z = Math.PI * 0.5;
+      knucklePad.position.set(0, -0.88, 0);
+      root.add(knucklePad);
+
+      // Thumb bracing on +Z palm side for the middle-finger cocking pose
+      const thumbPivot = new THREE.Group();
+      thumbPivot.position.set(-0.98, -0.05, 0.34);
+      thumbPivot.rotation.set(0.35, 0.25, 0.78);
+      const thumbSeg = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.3, 0.82, 8, 12),
+        skinMat
+      );
+      thumbSeg.position.set(0.1, -0.5, 0.22);
+      thumbPivot.add(thumbSeg);
+      const thumbNail = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.1), nailMat);
+      thumbNail.position.set(0.1, -0.86, -0.04);
+      thumbPivot.add(thumbNail);
+      root.add(thumbPivot);
+
+      // Curled Index, Ring, and Pinky fingers tucked neatly into the +Z palm
+      const curledConfigs = [
+        { x: -0.62, scale: 0.92 }, // Index
+        { x: 0.58, scale: 0.9 },   // Ring
+        { x: 1.0, scale: 0.76 },   // Pinky
+      ];
+      for (const cfg of curledConfigs) {
+        const finger = new THREE.Group();
+        finger.position.set(cfg.x, -0.9, 0.08);
+        finger.rotation.x = -1.35; // Curled into +Z palm
+        const seg1 = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.24 * cfg.scale, 0.65 * cfg.scale, 6, 10),
+          skinAccentMat
+        );
+        seg1.position.set(0, -0.45 * cfg.scale, 0);
+        finger.add(seg1);
+        const seg2 = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.22 * cfg.scale, 0.55 * cfg.scale, 6, 10),
+          skinMat
+        );
+        seg2.position.set(0, -0.78 * cfg.scale, 0.38 * cfg.scale);
+        seg2.rotation.x = -1.0;
+        finger.add(seg2);
+        root.add(finger);
+      }
+
+      // Giant Articulated Middle Finger (딱밤 striking finger!)
+      const middleFingerPivot = new THREE.Group();
+      middleFingerPivot.position.set(-0.02, -0.9, 0);
+
+      const midBase = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.34, 0.98, 8, 14),
+        skinMat
+      );
+      midBase.position.set(0, -0.58, 0);
+      midBase.castShadow = true;
+      middleFingerPivot.add(midBase);
+
+      const midTip = new THREE.Mesh(
+        new THREE.CapsuleGeometry(0.31, 0.85, 8, 14),
+        skinMat
+      );
+      midTip.position.set(0, -1.42, -0.04);
+      midTip.castShadow = true;
+      middleFingerPivot.add(midTip);
+
+      // Bright white cartoon fingernail on -Z face (the flicking impact surface!)
+      const midNail = new THREE.Mesh(
+        new THREE.BoxGeometry(0.42, 0.44, 0.14),
+        nailMat
+      );
+      midNail.position.set(0, -1.66, -0.32);
+      middleFingerPivot.add(midNail);
+
+      root.add(middleFingerPivot);
+
+      root.scale.setScalar(1.32);
+      root.rotation.set(0.18, 0.42, -0.08);
+      middleFingerPivot.rotation.x = -1.25;
+
+      const hoverZ = 127.0;
+      const hoverCX = this.getTrackCenterX(hoverZ);
+      const hoverY = this.getTrackHeightAtZ(hoverZ) + 7.4;
+      root.position.set(hoverCX, hoverY, hoverZ);
+      root.visible = slotIndex === 0;
+      this.courseGroup.add(root);
+
+      const shockwaveMat = new THREE.MeshBasicMaterial({
+        color: 0xfacc15,
+        transparent: true,
+        opacity: 0,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      });
+      const shockwaveMesh = new THREE.Mesh(
+        new THREE.RingGeometry(0.45, 1.4, 28),
+        shockwaveMat
+      );
+      shockwaveMesh.visible = false;
+      this.courseGroup.add(shockwaveMesh);
+
+      const comicSprite = this.createComicFlickSprite();
+      this.courseGroup.add(comicSprite);
+
+      this.giantFlickHands.push({
+        slotIndex,
+        root,
+        middleFingerPivot,
+        shockwaveMesh,
+        comicSprite,
+        phase: 'IDLE',
+        phaseTimer: 0,
+        targetRacer: null,
+        impactPos: new THREE.Vector3(),
+      });
+    }
+  }
+
+  public getRemainingFinishFlicks(totalRacers: number): number {
+    const maxFlicks = totalRacers >= 2 ? 2 : 0;
+    return Math.max(0, maxFlicks - this.flickedRacerIds.size);
+  }
+
+  public hasBeenFlicked(racerId: string): boolean {
+    return this.flickedRacerIds.has(racerId);
+  }
+
   public resetCourseState(): void {
     this.gateOpen = false;
     this.gateOpenProgress = 0;
@@ -1876,6 +2113,24 @@ export class ObstacleCourse {
     const baseY = this.getTrackHeightAtZ(z) + 1.25;
     this.startGateMesh.position.set(cx, baseY, z);
     this.startGateBody.setNextKinematicTranslation({ x: cx, y: baseY, z });
+
+    // Reset finish-line Giant Finger Flick trap
+    this.flickedRacerIds.clear();
+    const hoverZ = 128.0;
+    const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
+    const hoverY = this.getTrackHeightAtZ(hoverZ) + 6.8;
+    for (const hand of this.giantFlickHands) {
+      hand.phase = 'IDLE';
+      hand.phaseTimer = 0;
+      hand.targetRacer = null;
+      hand.root.scale.setScalar(1.38);
+      hand.root.position.set(hoverCX, hoverY, hoverZ);
+      hand.root.rotation.set(0.16, -0.52, 0.24);
+      hand.middleFingerPivot.rotation.x = -1.25;
+      hand.root.visible = hand.slotIndex === 0;
+      hand.shockwaveMesh.visible = false;
+      hand.comicSprite.visible = false;
+    }
 
     // Re-shuffle passable doors per rowGroup so EVERY gate row always has passable doors!
     const grouped = new Map<number, MysteryDoorData[]>();
@@ -1909,7 +2164,8 @@ export class ObstacleCourse {
     dt: number,
     racers: RagdollRacer[],
     particles: ParticleSystem,
-    sound: SoundManager
+    sound: SoundManager,
+    isRacing: boolean = false
   ): void {
     this.elapsedTime += dt;
 
@@ -2262,6 +2518,157 @@ export class ObstacleCourse {
           );
           particles.spawnHitBurst(rPos, '#ef4444', 14);
           sound.playRagdollHit(1.5);
+        }
+      }
+    }
+
+    // 12. Pre-Finish Giant Finger Flick (1·2등 결승선 직전 딱밤 대역전!)
+    const maxFlicks = racers.length >= 2 ? 2 : 0;
+    const triggerFlickZoneZ = FINISH_Z - 5.8; // Z = 126.2 (clear view right before finish arch Z = 132)
+
+    if (isRacing && this.flickedRacerIds.size < maxFlicks) {
+      const candidates = racers
+        .filter((r) => {
+          if (r.state === 'FINISHED' || this.flickedRacerIds.has(r.id)) return false;
+          const p = r.getPosition();
+          return p.z >= triggerFlickZoneZ && p.z < FINISH_Z - 0.8;
+        })
+        .sort((a, b) => b.getPosition().z - a.getPosition().z);
+
+      for (const target of candidates) {
+        if (this.flickedRacerIds.size >= maxFlicks) break;
+        const freeHand = this.giantFlickHands.find((h) => h.phase === 'IDLE');
+        if (!freeHand) break;
+
+        this.flickedRacerIds.add(target.id);
+        freeHand.phase = 'WINDUP';
+        freeHand.phaseTimer = 0;
+        freeHand.targetRacer = target;
+        freeHand.root.visible = true;
+        freeHand.root.scale.setScalar(1.45);
+
+        const side = freeHand.slotIndex === 0 ? 1 : -1;
+        const tp = target.getPosition();
+        freeHand.root.position.set(tp.x + side * 2.5, tp.y + 4.4, tp.z + 1.2);
+      }
+    }
+
+    for (const hand of this.giantFlickHands) {
+      const side = hand.slotIndex === 0 ? 1 : -1;
+      if (hand.phase === 'IDLE') {
+        if (hand.slotIndex === 0 && this.flickedRacerIds.size < maxFlicks) {
+          hand.root.visible = true;
+          const hoverZ = 128.0;
+          const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
+          const hoverY = this.getTrackHeightAtZ(hoverZ) + 6.8 + Math.sin(this.elapsedTime * 2.6) * 0.45;
+          hand.root.position.set(
+            hoverCX + Math.sin(this.elapsedTime * 1.4) * 1.4,
+            hoverY,
+            hoverZ
+          );
+          hand.root.rotation.set(0.16, -0.52 + Math.sin(this.elapsedTime * 1.2) * 0.08, 0.24);
+          hand.middleFingerPivot.rotation.x = -1.25 - Math.sin(this.elapsedTime * 5.0) * 0.08;
+        } else {
+          hand.root.visible = false;
+        }
+      } else if (hand.phase === 'WINDUP') {
+        hand.phaseTimer += dt;
+        const target = hand.targetRacer;
+        if (!target || target.state === 'FINISHED') {
+          hand.phase = this.flickedRacerIds.size >= maxFlicks ? 'DONE' : 'IDLE';
+          hand.targetRacer = null;
+          continue;
+        }
+
+        const tp = target.getPosition();
+        const windRatio = Math.min(1, hand.phaseTimer / 0.11);
+        // Offset hand to the side of the racer so trailing/climax cameras have an unobstructed side view of the flick
+        const desiredPos = new THREE.Vector3(tp.x + side * 2.1, tp.y + 1.95, tp.z + 1.15);
+        hand.root.position.lerp(desiredPos, Math.min(1, dt * 42));
+        hand.root.rotation.set(0.12, -side * 0.62, side * 0.34);
+        // Tightly curl middle finger against thumb before snapping
+        hand.middleFingerPivot.rotation.x = THREE.MathUtils.lerp(-1.25, -1.58, windRatio);
+
+        // Execute SNAP impact at 0.11s or sooner if racer nears finish line
+        if (hand.phaseTimer >= 0.11 || tp.z >= FINISH_Z - 3.2) {
+          hand.phase = 'IMPACT';
+          hand.phaseTimer = 0;
+          hand.impactPos.set(tp.x, tp.y + 0.4, tp.z);
+
+          // Violent snap forward toward -Z!
+          hand.middleFingerPivot.rotation.x = 0.85;
+          hand.root.position.set(tp.x + side * 1.95, tp.y + 1.75, tp.z + 0.85);
+
+          const cx = this.getTrackCenterX(tp.z);
+          const inwardVx = THREE.MathUtils.clamp(
+            (cx - tp.x) * 1.15 + (Math.random() - 0.5) * 4.5,
+            -7,
+            7
+          );
+          // Launch all 6 ragdoll bodies backward (-Z) & high (+Y) so racer flies ~18-22m back!
+          target.setAllBodiesLinvel({ x: inwardVx, y: 13.5, z: -26.5 });
+          target.triggerRagdoll(
+            { x: inwardVx * 1.2, y: 12, z: -20 },
+            { x: -24, y: (Math.random() - 0.5) * 18, z: (Math.random() - 0.5) * 18 },
+            1.75
+          );
+
+          particles.spawnHitBurst(hand.impactPos, '#facc15', 20);
+          particles.spawnHitBurst(hand.impactPos, '#ef4444', 12);
+          sound.playFingerFlick();
+
+          hand.shockwaveMesh.visible = true;
+          hand.shockwaveMesh.position.copy(hand.impactPos);
+          hand.shockwaveMesh.scale.setScalar(0.5);
+          (hand.shockwaveMesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
+
+          hand.comicSprite.visible = true;
+          hand.comicSprite.position.set(tp.x, tp.y + 2.2, tp.z);
+          (hand.comicSprite.material as THREE.SpriteMaterial).opacity = 1;
+
+          if (this.onFinishFlick) {
+            this.onFinishFlick(target, this.flickedRacerIds.size);
+          }
+        }
+      } else if (hand.phase === 'IMPACT') {
+        hand.phaseTimer += dt;
+        const t = Math.min(1, hand.phaseTimer / 0.72);
+
+        // Slight recoil lift & finger follow-through wobble
+        hand.root.position.y += dt * 4.2;
+        hand.middleFingerPivot.rotation.x = 0.72 + Math.sin(hand.phaseTimer * 36) * 0.14 * (1 - t);
+
+        // Shockwave ring expands rapidly and fades
+        const ringScale = 0.6 + t * 4.6;
+        hand.shockwaveMesh.scale.setScalar(ringScale);
+        (hand.shockwaveMesh.material as THREE.MeshBasicMaterial).opacity = Math.max(0, (1 - t) * 0.95);
+
+        // Comic "💥 딱밤!!" sprite pops up and fades
+        hand.comicSprite.position.y = hand.impactPos.y + 2.1 + t * 2.0;
+        const popScale = t < 0.2 ? 0.65 + (t / 0.2) * 0.48 : 1.13;
+        hand.comicSprite.scale.set(5.2 * popScale, 1.98 * popScale, 1);
+        (hand.comicSprite.material as THREE.SpriteMaterial).opacity = t > 0.65 ? Math.max(0, (1 - t) / 0.35) : 1;
+
+        if (hand.phaseTimer >= 0.72) {
+          hand.shockwaveMesh.visible = false;
+          hand.comicSprite.visible = false;
+          hand.targetRacer = null;
+          if (hand.slotIndex === 0 && this.flickedRacerIds.size < maxFlicks) {
+            hand.phase = 'IDLE';
+            hand.phaseTimer = 0;
+            hand.middleFingerPivot.rotation.x = -1.25;
+          } else {
+            hand.phase = 'DONE';
+            hand.phaseTimer = 0;
+          }
+        }
+      } else if (hand.phase === 'DONE') {
+        hand.phaseTimer += dt;
+        hand.root.position.y += dt * 16;
+        const shrink = Math.max(0.01, 1.38 * (1 - hand.phaseTimer * 2.5));
+        hand.root.scale.setScalar(shrink);
+        if (hand.phaseTimer >= 0.4) {
+          hand.root.visible = false;
         }
       }
     }

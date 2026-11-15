@@ -194,6 +194,52 @@ export class SoundManager {
     });
   }
 
+  public playFingerFlick(): void {
+    const ctx = this.ensureContext();
+    if (!ctx) return;
+
+    const now = ctx.currentTime;
+
+    // 1. Crisp finger-snap "딱!" transient
+    const snapOsc = ctx.createOscillator();
+    const snapGain = ctx.createGain();
+    snapOsc.type = 'triangle';
+    snapOsc.frequency.setValueAtTime(1750, now);
+    snapOsc.frequency.exponentialRampToValueAtTime(260, now + 0.055);
+    snapGain.gain.setValueAtTime(0.32, now);
+    snapGain.gain.exponentialRampToValueAtTime(0.001, now + 0.065);
+    snapOsc.connect(snapGain);
+    snapGain.connect(ctx.destination);
+    snapOsc.start(now);
+    snapOsc.stop(now + 0.07);
+
+    // 2. Heavy comic thump
+    const thumpOsc = ctx.createOscillator();
+    const thumpGain = ctx.createGain();
+    thumpOsc.type = 'sine';
+    thumpOsc.frequency.setValueAtTime(210, now);
+    thumpOsc.frequency.exponentialRampToValueAtTime(42, now + 0.22);
+    thumpGain.gain.setValueAtTime(0.3, now);
+    thumpGain.gain.exponentialRampToValueAtTime(0.001, now + 0.24);
+    thumpOsc.connect(thumpGain);
+    thumpGain.connect(ctx.destination);
+    thumpOsc.start(now);
+    thumpOsc.stop(now + 0.25);
+
+    // 3. Cartoon launch whistle "휘유웅~"
+    const whooshOsc = ctx.createOscillator();
+    const whooshGain = ctx.createGain();
+    whooshOsc.type = 'sine';
+    whooshOsc.frequency.setValueAtTime(760, now + 0.04);
+    whooshOsc.frequency.exponentialRampToValueAtTime(230, now + 0.42);
+    whooshGain.gain.setValueAtTime(0.11, now + 0.04);
+    whooshGain.gain.exponentialRampToValueAtTime(0.001, now + 0.44);
+    whooshOsc.connect(whooshGain);
+    whooshGain.connect(ctx.destination);
+    whooshOsc.start(now + 0.04);
+    whooshOsc.stop(now + 0.46);
+  }
+
   public startArcadeBgm(): void {
     if (this.bgmPlaying) return;
     this.bgmPlaying = true;

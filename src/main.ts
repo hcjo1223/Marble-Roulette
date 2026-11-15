@@ -57,6 +57,7 @@ class RagdollDerbyGame {
   private manualSlowMo: boolean = false;
   private autoSlowMoTimer: number = 0;
   private hasTriggeredAutoSlowMo: boolean = false;
+  private flickBannerTimer: number = 0;
   private winnerAnnounced: boolean = false;
 
   private lastFrameTime: number = performance.now();
@@ -130,6 +131,7 @@ class RagdollDerbyGame {
     this.world = new RAPIER.World({ x: 0, y: -26.0, z: 0 });
     this.particles = new ParticleSystem(this.scene);
     this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
+    this.bindCourseCallbacks();
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
     this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
 
@@ -153,6 +155,21 @@ class RagdollDerbyGame {
     });
 
     requestAnimationFrame((now) => this.animate(now));
+  }
+
+  private bindCourseCallbacks(): void {
+    this.course.onFinishFlick = (racer, flickNum) => {
+      const banner = document.getElementById('flick-banner');
+      const textEl = document.getElementById('flick-banner-text');
+      if (banner && textEl) {
+        textEl.textContent = `👆💥 ${flickNum}등 [${racer.name}] 거대 딱밤 맞고 날아감! 대역전 찬스!`;
+        banner.classList.remove('hidden');
+        banner.style.animation = 'none';
+        void banner.offsetWidth;
+        banner.style.animation = '';
+        this.flickBannerTimer = 2.2;
+      }
+    };
   }
 
   private syncMapThemeUI(): void {
@@ -191,6 +208,7 @@ class RagdollDerbyGame {
 
     this.course.dispose();
     this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
+    this.bindCourseCallbacks();
     this.rebuildRacersFromInput();
   }
 
@@ -284,8 +302,10 @@ class RagdollDerbyGame {
     this.raceElapsed = 0;
     this.autoSlowMoTimer = 0;
     this.hasTriggeredAutoSlowMo = false;
+    this.flickBannerTimer = 0;
     this.winnerAnnounced = false;
     this.setSlowMoVisuals(false);
+    document.getElementById('flick-banner')?.classList.add('hidden');
 
     document.getElementById('hud-timer')!.textContent = '0.0초';
     document.getElementById('hud-zone-badge')!.textContent = this.course.getZoneLabelAtZ(0);
@@ -732,6 +752,7 @@ class RagdollDerbyGame {
       this.sortedRacers[0] ||
       null;
 
+    const remainingFlicks = this.course.getRemainingFinishFlicks(this.racers.length);
     if (
       this.phase === 'RACING' &&
       !this.hasTriggeredAutoSlowMo &&
@@ -740,11 +761,21 @@ class RagdollDerbyGame {
       decisiveRacer.state !== 'FINISHED'
     ) {
       const z = decisiveRacer.getPosition().z;
-      if (z >= FINISH_Z - 11.5 && z < FINISH_Z) {
+      const canSlowMo =
+        remainingFlicks === 0 ||
+        (z >= FINISH_Z - 3.2 && this.course.hasBeenFlicked(decisiveRacer.id));
+      if (canSlowMo && z >= FINISH_Z - 9.0 && z < FINISH_Z) {
         this.hasTriggeredAutoSlowMo = true;
         this.autoSlowMoTimer = 2.3;
         this.sound.playSlowMoTrigger();
         this.setSlowMoVisuals(true);
+      }
+    }
+
+    if (this.flickBannerTimer > 0) {
+      this.flickBannerTimer -= realDt;
+      if (this.flickBannerTimer <= 0) {
+        document.getElementById('flick-banner')?.classList.add('hidden');
       }
     }
 
@@ -764,7 +795,13 @@ class RagdollDerbyGame {
       document.getElementById('hud-timer')!.textContent = `${this.raceElapsed.toFixed(1)}초`;
     }
 
-    this.course.update(simDt, this.racers, this.particles, this.sound);
+    this.course.update(
+      simDt,
+      this.racers,
+      this.particles,
+      this.sound,
+      this.phase === 'RACING'
+    );
 
     for (const r of this.racers) {
       r.updateAIAndPhysics(

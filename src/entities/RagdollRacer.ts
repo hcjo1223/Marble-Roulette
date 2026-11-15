@@ -572,6 +572,15 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  public setAllBodiesLinvel(vel: { x: number; y: number; z: number }): void {
+    this.torsoBody.setLinvel(vel, true);
+    this.headBody.setLinvel(vel, true);
+    this.leftArmBody.setLinvel(vel, true);
+    this.rightArmBody.setLinvel(vel, true);
+    this.leftLegBody.setLinvel(vel, true);
+    this.rightLegBody.setLinvel(vel, true);
+  }
+
   public teleportTo(pos: THREE.Vector3): void {
     const resetBody = (
       body: RAPIER.RigidBody,
