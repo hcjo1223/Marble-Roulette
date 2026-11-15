@@ -72,7 +72,8 @@ class RagdollDerbyGame {
     const isMobile = this.isMobileViewport();
 
     const urlParams = new URLSearchParams(window.location.search);
-    if (urlParams.get('map')?.toUpperCase() === 'TAEKWONDO') {
+    const mapParam = urlParams.get('map')?.toUpperCase();
+    if (mapParam === 'TAEKWONDO' || mapParam === 'TAEBI') {
       this.mapTheme = 'TAEKWONDO';
     }
 
@@ -161,8 +162,10 @@ class RagdollDerbyGame {
 
     const quickMapBtn = document.getElementById('btn-quick-map-toggle');
     if (quickMapBtn) {
-      quickMapBtn.textContent =
-        this.mapTheme === 'TAEKWONDO' ? '🗺️ 맵2: 🥋 태권도' : '🗺️ 맵1: 🏫 운동장';
+      quickMapBtn.innerHTML =
+        this.mapTheme === 'TAEKWONDO'
+          ? '<img src="./taebi-icon.jpg" alt="태비태권도" class="map-pill-icon" /><span>맵2: 태비태권도</span>'
+          : '🗺️ 맵1: 🏫 운동장';
       quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
     }
   }

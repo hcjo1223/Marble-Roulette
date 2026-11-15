@@ -220,7 +220,7 @@ export class ObstacleCourse {
 
   public getZoneLabelAtZ(z: number): string {
     if (this.mapTheme === 'TAEKWONDO') {
-      if (z < 42) return '🥋 태권도장';
+      if (z < 42) return '🥋 태비태권도장';
       if (z < 72) return '🪵 송판 & 기와 격파';
       if (z < 100) return '🥁 기합 장풍 존';
       if (z < FINISH_Z) return '⚔️ 대련장';
@@ -651,7 +651,7 @@ export class ObstacleCourse {
     }
 
     if (isTkd) {
-      this.addArchSign(11, '🥋 태권도장 수련 시작!', '#dc2626', '#fef2f2', '#991b1b');
+      this.addArchSign(11, '태비태권도 수련 시작!', '#dc2626', '#fef2f2', '#991b1b', true);
       this.addArchSign(43, '🪵 송판 & 기와 격파!', '#d97706', '#fef3c7', '#92400e');
       this.addArchSign(72, '🥁 기합 장풍 & 품새 스텝', '#2563eb', '#dbeafe', '#1e3a8a');
       this.addArchSign(103, '⚔️ 챔피언 대련장', '#1e293b', '#f8fafc', '#0f172a');
@@ -668,7 +668,8 @@ export class ObstacleCourse {
     title: string,
     borderHex: string,
     bgHex: string,
-    textHex: string
+    textHex: string,
+    showTaebiIcon: boolean = false
   ): void {
     const cx = this.getTrackCenterX(z);
     const y = this.getTrackHeightAtZ(z);
@@ -688,24 +689,56 @@ export class ObstacleCourse {
     }
 
     const canvas = document.createElement('canvas');
-    canvas.width = 512;
+    canvas.width = 1024;
     canvas.height = 96;
     const ctx = canvas.getContext('2d')!;
-    ctx.fillStyle = bgHex;
-    ctx.beginPath();
-    ctx.roundRect(6, 6, 500, 84, 18);
-    ctx.fill();
-    ctx.strokeStyle = borderHex;
-    ctx.lineWidth = 8;
-    ctx.stroke();
+    const drawBannerBase = () => {
+      ctx.clearRect(0, 0, 1024, 96);
+      ctx.fillStyle = bgHex;
+      ctx.beginPath();
+      ctx.roundRect(10, 6, 1004, 84, 18);
+      ctx.fill();
+      ctx.strokeStyle = borderHex;
+      ctx.lineWidth = 8;
+      ctx.stroke();
 
-    ctx.fillStyle = textHex;
-    ctx.font = '800 34px "Plus Jakarta Sans", sans-serif';
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillText(title, 256, 49);
+      ctx.fillStyle = textHex;
+      ctx.font = '800 44px "Plus Jakarta Sans", "Pretendard", sans-serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(title, showTaebiIcon ? 544 : 512, 49);
+    };
+    drawBannerBase();
 
     const tex = new THREE.CanvasTexture(canvas);
+    tex.minFilter = THREE.LinearFilter;
+    tex.magFilter = THREE.LinearFilter;
+    if (showTaebiIcon) {
+      const iconImg = new Image();
+      iconImg.onload = () => {
+        drawBannerBase();
+        const cxIcon = 120;
+        const cyIcon = 48;
+        const rxIcon = 30;
+        const ryIcon = 35;
+        ctx.save();
+        ctx.beginPath();
+        ctx.ellipse(cxIcon, cyIcon, rxIcon, ryIcon, 0, 0, Math.PI * 2);
+        ctx.clip();
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(cxIcon - rxIcon, cyIcon - ryIcon, rxIcon * 2, ryIcon * 2);
+        ctx.drawImage(iconImg, cxIcon - rxIcon, cyIcon - ryIcon, rxIcon * 2, ryIcon * 2);
+        ctx.restore();
+        ctx.strokeStyle = borderHex;
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.ellipse(cxIcon, cyIcon, rxIcon, ryIcon, 0, 0, Math.PI * 2);
+        ctx.stroke();
+        tex.needsUpdate = true;
+      };
+      iconImg.src = './taebi-icon.jpg';
+    }
+
     const banner = new THREE.Mesh(
       new THREE.BoxGeometry(halfW * 2 + 0.7, 1.45, 0.35),
       new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
