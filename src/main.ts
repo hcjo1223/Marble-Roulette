@@ -2,7 +2,13 @@ import './style.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
 import confetti from 'canvas-confetti';
-import type { CameraMode, MapTheme, ParticipantEntry, WinningRule } from './types';
+import type {
+  CameraMode,
+  MapTheme,
+  ObstacleDensity,
+  ParticipantEntry,
+  WinningRule,
+} from './types';
 import { SoundManager } from './audio/SoundManager';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
@@ -48,6 +54,7 @@ class RagdollDerbyGame {
   private finishedRacers: RagdollRacer[] = [];
 
   private mapTheme: MapTheme = 'PLAYGROUND';
+  private obstacleDensity: ObstacleDensity = 'NORMAL';
   private winningRule: WinningRule = 'FIRST';
   private targetRank: number = 1;
 
@@ -76,6 +83,10 @@ class RagdollDerbyGame {
     const mapParam = urlParams.get('map')?.toUpperCase();
     if (mapParam === 'TAEKWONDO' || mapParam === 'TAEBI') {
       this.mapTheme = 'TAEKWONDO';
+    }
+    const densityParam = urlParams.get('density')?.toUpperCase();
+    if (densityParam === 'LIGHT') {
+      this.obstacleDensity = 'LIGHT';
     }
 
     // 1. Bright Sunny Daylight Three.js Scene
@@ -130,7 +141,12 @@ class RagdollDerbyGame {
     // 3. Physics World & Course
     this.world = new RAPIER.World({ x: 0, y: -26.0, z: 0 });
     this.particles = new ParticleSystem(this.scene);
-    this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
+    this.course = new ObstacleCourse(
+      this.world,
+      this.scene,
+      this.mapTheme,
+      this.obstacleDensity
+    );
     this.bindCourseCallbacks();
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
     this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
@@ -142,6 +158,7 @@ class RagdollDerbyGame {
     // 4. Bind UI Events & Spawn Initial Racers
     this.bindUIEvents();
     this.syncMapThemeUI();
+    this.syncDensityUI();
     this.rebuildRacersFromInput();
 
     const handleResize = () => {
@@ -187,6 +204,19 @@ class RagdollDerbyGame {
     }
   }
 
+  private syncDensityUI(): void {
+    document.querySelectorAll<HTMLButtonElement>('.density-btn').forEach((btn) => {
+      btn.classList.toggle('active', btn.dataset.density === this.obstacleDensity);
+    });
+
+    const quickDensityBtn = document.getElementById('btn-quick-density-toggle');
+    if (quickDensityBtn) {
+      quickDensityBtn.textContent =
+        this.obstacleDensity === 'LIGHT' ? '🌿 장애물: 적음' : '🔥 장애물: 많음';
+      quickDensityBtn.classList.toggle('light-active', this.obstacleDensity === 'LIGHT');
+    }
+  }
+
   private switchMapTheme(newTheme: MapTheme): void {
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
@@ -207,7 +237,33 @@ class RagdollDerbyGame {
     this.syncMapThemeUI();
 
     this.course.dispose();
-    this.course = new ObstacleCourse(this.world, this.scene, this.mapTheme);
+    this.course = new ObstacleCourse(
+      this.world,
+      this.scene,
+      this.mapTheme,
+      this.obstacleDensity
+    );
+    this.bindCourseCallbacks();
+    this.rebuildRacersFromInput();
+  }
+
+  private switchObstacleDensity(newDensity: ObstacleDensity): void {
+    if (this.countdownTimer !== null) {
+      clearInterval(this.countdownTimer);
+      this.countdownTimer = null;
+      document.getElementById('countdown-overlay')!.classList.add('hidden');
+    }
+
+    this.obstacleDensity = newDensity;
+    this.syncDensityUI();
+
+    this.course.dispose();
+    this.course = new ObstacleCourse(
+      this.world,
+      this.scene,
+      this.mapTheme,
+      this.obstacleDensity
+    );
     this.bindCourseCallbacks();
     this.rebuildRacersFromInput();
   }
@@ -220,11 +276,13 @@ class RagdollDerbyGame {
     this.raycaster.setFromCamera(ndc, this.cameraDirector.camera);
 
     let closestRacer: RagdollRacer | null = null;
-    let minRayDist = 1.65;
+    let minRayDist = 2.15;
+    const focusCenter = new THREE.Vector3();
 
     for (const r of this.racers) {
       const pos = r.getPosition();
-      const distToRay = this.raycaster.ray.distanceToPoint(pos);
+      focusCenter.set(pos.x, pos.y + 0.45, pos.z);
+      const distToRay = this.raycaster.ray.distanceToPoint(focusCenter);
       if (distToRay < minRayDist) {
         minRayDist = distToRay;
         closestRacer = r;
@@ -485,6 +543,21 @@ class RagdollDerbyGame {
         const theme = btn.dataset.map as MapTheme;
         if (theme && theme !== this.mapTheme) {
           this.switchMapTheme(theme);
+        }
+      });
+    });
+
+    document.getElementById('btn-quick-density-toggle')!.addEventListener('click', () => {
+      const nextDensity: ObstacleDensity =
+        this.obstacleDensity === 'NORMAL' ? 'LIGHT' : 'NORMAL';
+      this.switchObstacleDensity(nextDensity);
+    });
+
+    document.querySelectorAll<HTMLButtonElement>('.density-btn').forEach((btn) => {
+      btn.addEventListener('click', () => {
+        const density = btn.dataset.density as ObstacleDensity;
+        if (density && density !== this.obstacleDensity) {
+          this.switchObstacleDensity(density);
         }
       });
     });
@@ -800,7 +873,8 @@ class RagdollDerbyGame {
       this.racers,
       this.particles,
       this.sound,
-      this.phase === 'RACING'
+      this.phase === 'RACING',
+      this.cameraDirector.camera.position
     );
 
     for (const r of this.racers) {

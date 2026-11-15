@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import type { MapTheme } from '../types';
+import type { MapTheme, ObstacleDensity } from '../types';
 import {
   GROUP_ENV,
   GROUP_LIMB,
@@ -141,6 +141,7 @@ export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
   public readonly mapTheme: MapTheme;
+  public readonly obstacleDensity: ObstacleDensity;
   private courseGroup: THREE.Group;
   private bodies: RAPIER.RigidBody[] = [];
 
@@ -159,6 +160,10 @@ export class ObstacleCourse {
   private slidingShields: SlidingShieldData[] = [];
   private springboards: SpringboardData[] = [];
   private shockwaveDrums: ShockwaveDrumData[] = [];
+  private overheadBanners: {
+    mat: THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
+    z: number;
+  }[] = [];
 
   private giantFlickHands: GiantFlickHandData[] = [];
   private flickedRacerIds: Set<string> = new Set();
@@ -166,10 +171,16 @@ export class ObstacleCourse {
 
   private elapsedTime: number = 0;
 
-  constructor(world: RAPIER.World, scene: THREE.Scene, mapTheme: MapTheme = 'PLAYGROUND') {
+  constructor(
+    world: RAPIER.World,
+    scene: THREE.Scene,
+    mapTheme: MapTheme = 'PLAYGROUND',
+    obstacleDensity: ObstacleDensity = 'NORMAL'
+  ) {
     this.world = world;
     this.scene = scene;
     this.mapTheme = mapTheme;
+    this.obstacleDensity = obstacleDensity;
     this.courseGroup = new THREE.Group();
     this.scene.add(this.courseGroup);
 
@@ -701,8 +712,8 @@ export class ObstacleCourse {
     const pillarColor = this.mapTheme === 'TAEKWONDO' ? 0xb91c1c : 0x16a34a;
     const pillarMat = new THREE.MeshStandardMaterial({ color: pillarColor, roughness: 0.4 });
     for (const side of [-1, 1]) {
-      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 6.8, 12), pillarMat);
-      pillar.position.set(side * (halfW + 0.1), 3.4, 0);
+      const pillar = new THREE.Mesh(new THREE.CylinderGeometry(0.24, 0.24, 8.8, 12), pillarMat);
+      pillar.position.set(side * (halfW + 0.1), 4.4, 0);
       group.add(pillar);
     }
 
@@ -757,12 +768,19 @@ export class ObstacleCourse {
       iconImg.src = './taebi-icon.jpg';
     }
 
+    const bannerMat = new THREE.MeshBasicMaterial({
+      map: tex,
+      toneMapped: false,
+      transparent: true,
+      opacity: 1,
+    });
     const banner = new THREE.Mesh(
       new THREE.BoxGeometry(halfW * 2 + 0.7, 1.45, 0.35),
-      new THREE.MeshBasicMaterial({ map: tex, toneMapped: false })
+      bannerMat
     );
-    banner.position.set(0, 6.4, 0);
+    banner.position.set(0, 8.4, 0);
     group.add(banner);
+    this.overheadBanners.push({ mat: bannerMat, z });
     this.courseGroup.add(group);
   }
 
@@ -811,16 +829,23 @@ export class ObstacleCourse {
   }
 
   private buildPlaygroundZone1DesksAndSweepers(): void {
-    const obstaclePositions = [
-      { z: 16, offset: -5.2 },
-      { z: 18, offset: 4.5 },
-      { z: 22, offset: -1.5 },
-      { z: 24, offset: 5.5 },
-      { z: 29, offset: -5.8 },
-      { z: 31, offset: 1.2 },
-      { z: 36, offset: -3.2 },
-      { z: 37, offset: 4.8 },
-    ];
+    const isLight = this.obstacleDensity === 'LIGHT';
+    const obstaclePositions = isLight
+      ? [
+          { z: 18, offset: -4.2 },
+          { z: 26, offset: 3.8 },
+          { z: 35, offset: -2.6 },
+        ]
+      : [
+          { z: 16, offset: -5.2 },
+          { z: 18, offset: 4.5 },
+          { z: 22, offset: -1.5 },
+          { z: 24, offset: 5.5 },
+          { z: 29, offset: -5.8 },
+          { z: 31, offset: 1.2 },
+          { z: 36, offset: -3.2 },
+          { z: 37, offset: 4.8 },
+        ];
 
     const deskTopMat = new THREE.MeshStandardMaterial({ color: 0xb45309, roughness: 0.55 });
     const legMat = new THREE.MeshStandardMaterial({ color: 0x475569, metalness: 0.4 });
@@ -862,34 +887,58 @@ export class ObstacleCourse {
       );
     }
 
-    this.createSweeper(20, -2.5, 4.6, 3.3, 3, 0x2563eb);
-    this.createSweeper(28, 2.6, 4.8, -3.6, 2, 0xf43f5e);
-    this.createSweeper(35, 0, 5.8, 3.8, 3, 0x0ea5e9);
+    if (isLight) {
+      this.createSweeper(28, 0, 5.2, 2.7, 2, 0x2563eb);
+    } else {
+      this.createSweeper(20, -2.5, 4.6, 3.3, 3, 0x2563eb);
+      this.createSweeper(28, 2.6, 4.8, -3.6, 2, 0xf43f5e);
+      this.createSweeper(35, 0, 5.8, 3.8, 3, 0x0ea5e9);
+    }
   }
 
   private buildPlaygroundZone2MysteryAndBumpers(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
     this.buildBreakingDoorRow(48, 5, 0, 'MYSTERY');
 
-    const popupSpecs = [
-      { z: 54, offset: -4.0, phase: 0, freq: 3.4 },
-      { z: 54, offset: 4.0, phase: 2.1, freq: 3.4 },
-      { z: 60, offset: 0, phase: 1.0, freq: 3.9 },
-      { z: 66, offset: -3.2, phase: 0.5, freq: 4.2 },
-      { z: 66, offset: 3.2, phase: 2.7, freq: 4.2 },
-    ];
+    const popupSpecs = isLight
+      ? [
+          { z: 56, offset: -3.4, phase: 0, freq: 2.8 },
+          { z: 65, offset: 3.4, phase: 1.8, freq: 2.8 },
+        ]
+      : [
+          { z: 54, offset: -4.0, phase: 0, freq: 3.4 },
+          { z: 54, offset: 4.0, phase: 2.1, freq: 3.4 },
+          { z: 60, offset: 0, phase: 1.0, freq: 3.9 },
+          { z: 66, offset: -3.2, phase: 0.5, freq: 4.2 },
+          { z: 66, offset: 3.2, phase: 2.7, freq: 4.2 },
+        ];
     this.addPopupBumpers(popupSpecs, 0x10b981);
 
-    const pinballSpecs = [
-      { z: 57, offset: -4.8 },
-      { z: 57, offset: 4.8 },
-      { z: 63, offset: -2.2 },
-      { z: 63, offset: 2.2 },
-      { z: 69, offset: 0 },
-    ];
+    const pinballSpecs = isLight
+      ? [
+          { z: 60, offset: -4.0 },
+          { z: 60, offset: 4.0 },
+        ]
+      : [
+          { z: 57, offset: -4.8 },
+          { z: 57, offset: 4.8 },
+          { z: 63, offset: -2.2 },
+          { z: 63, offset: 2.2 },
+          { z: 69, offset: 0 },
+        ];
     this.addPinballBumpers(pinballSpecs, 0xec4899);
   }
 
   private buildPlaygroundZone4Pendulums(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    if (isLight) {
+      this.addSwingingPendulums(
+        [{ z: 114, freq: 2.0, phase: 0, maxAngle: 0.82 }],
+        false
+      );
+      return;
+    }
+
     this.addSwingingPendulums(
       [
         { z: 108, freq: 2.35, phase: 0, maxAngle: 0.92 },
@@ -913,17 +962,23 @@ export class ObstacleCourse {
   }
 
   private buildTaekwondoZone1Dojo(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
     const envGroup = this.envCollisionGroup();
 
     // 1. Standing Taekwondo Kicking Dummy Bags (청·홍 샌드백 미트)
-    const bagSpots = [
-      { z: 16, offset: -5.5 },
-      { z: 16, offset: 5.5 },
-      { z: 25, offset: -3.0 },
-      { z: 25, offset: 3.0 },
-      { z: 34, offset: -6.0 },
-      { z: 34, offset: 6.0 },
-    ];
+    const bagSpots = isLight
+      ? [
+          { z: 17, offset: -4.8 },
+          { z: 33, offset: 4.8 },
+        ]
+      : [
+          { z: 16, offset: -5.5 },
+          { z: 16, offset: 5.5 },
+          { z: 25, offset: -3.0 },
+          { z: 25, offset: 3.0 },
+          { z: 34, offset: -6.0 },
+          { z: 34, offset: 6.0 },
+        ];
     const baseMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.6 });
     const redBagMat = new THREE.MeshStandardMaterial({ color: 0xdc2626, roughness: 0.35 });
     const blueBagMat = new THREE.MeshStandardMaterial({ color: 0x2563eb, roughness: 0.35 });
@@ -962,53 +1017,72 @@ export class ObstacleCourse {
     });
 
     // 2. Taekwondo Vaulting Springboards (이단 앞차기 도약 발판) - launch racers over obstacles!
-    this.createSpringboard(18.5, -2.5, 2.2, 1.6, 22, 26);
-    this.createSpringboard(18.5, 2.5, 2.2, 1.6, 22, 26);
-    this.createSpringboard(31.0, 0, 2.6, 1.6, 24, 28);
+    if (isLight) {
+      this.createSpringboard(20.0, 0, 2.5, 1.6, 22, 25);
+      this.createSpringboard(31.5, 0, 2.5, 1.6, 22, 25);
+      this.createSlidingShield(26.5, 2.5, 0.95, 0.45, 5.2, 2.2, 0, 0xdc2626);
+    } else {
+      this.createSpringboard(18.5, -2.5, 2.2, 1.6, 22, 26);
+      this.createSpringboard(18.5, 2.5, 2.2, 1.6, 22, 26);
+      this.createSpringboard(31.0, 0, 2.6, 1.6, 24, 28);
 
-    // 3. Sliding Taekwondo Hogu / Kick Shields (좌우 왕복 타격 방패)
-    this.createSlidingShield(22.0, 2.6, 0.95, 0.45, 5.8, 2.5, 0, 0xdc2626);
-    this.createSlidingShield(28.5, 2.8, 0.95, 0.45, 5.6, 2.9, Math.PI, 0x2563eb);
-    this.createSlidingShield(37.5, 3.0, 1.0, 0.45, 5.5, 3.3, Math.PI * 0.5, 0x0f172a);
+      // 3. Sliding Taekwondo Hogu / Kick Shields (좌우 왕복 타격 방패)
+      this.createSlidingShield(22.0, 2.6, 0.95, 0.45, 5.8, 2.5, 0, 0xdc2626);
+      this.createSlidingShield(28.5, 2.8, 0.95, 0.45, 5.6, 2.9, Math.PI, 0x2563eb);
+      this.createSlidingShield(37.5, 3.0, 1.0, 0.45, 5.5, 3.3, Math.PI * 0.5, 0x0f172a);
+    }
   }
 
   private buildTaekwondoZone2BreakingAndPosts(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
     // 1. First Breaking Gate: 5 Pinewood Breaking Boards (송판 격파) at Z = 46
     this.buildBreakingDoorRow(46, 5, 0, 'PINEWOOD');
 
     // 2. Bamboo/Wooden Wing-Chun & Taekwondo Slalom Posts + Fast 4-Blade Nunchuck Spinner (Z = 51..58)
-    const postSpecs = [
-      { z: 52, offset: -5.2 },
-      { z: 52, offset: 5.2 },
-      { z: 54, offset: -2.2 },
-      { z: 54, offset: 2.2 },
-      { z: 57, offset: -4.5 },
-      { z: 57, offset: 4.5 },
-    ];
+    const postSpecs = isLight
+      ? [
+          { z: 54, offset: -3.6 },
+          { z: 54, offset: 3.6 },
+        ]
+      : [
+          { z: 52, offset: -5.2 },
+          { z: 52, offset: 5.2 },
+          { z: 54, offset: -2.2 },
+          { z: 54, offset: 2.2 },
+          { z: 57, offset: -4.5 },
+          { z: 57, offset: 4.5 },
+        ];
     this.addPinballBumpers(postSpecs, 0xb45309);
 
-    // 4-Blade Black-Belt Nunchuck Spinner in the center!
-    this.createSweeper(55, 0, 5.4, 4.2, 4, 0x0f172a);
+    if (!isLight) {
+      // 4-Blade Black-Belt Nunchuck Spinner in the center!
+      this.createSweeper(55, 0, 5.4, 4.2, 4, 0x0f172a);
+    }
 
     // 3. Second Breaking Gate: 4 Black Roof-Tile Stacks (기와장 격파) at Z = 62!
     this.buildBreakingDoorRow(62, 4, 1, 'ROOFTILE');
 
-    // 4. Taegeuk Bounce Pads before Zone 3 (Z = 67..70)
-    this.createSpringboard(67.5, -4.5, 2.0, 1.5, 20, 24);
-    this.createSpringboard(67.5, 4.5, 2.0, 1.5, 20, 24);
-    this.createSlidingShield(69.5, 2.4, 0.95, 0.45, 5.4, 3.0, 0, 0xdc2626);
+    if (!isLight) {
+      // 4. Taegeuk Bounce Pads before Zone 3 (Z = 67..70)
+      this.createSpringboard(67.5, -4.5, 2.0, 1.5, 20, 24);
+      this.createSpringboard(67.5, 4.5, 2.0, 1.5, 20, 24);
+      this.createSlidingShield(69.5, 2.4, 0.95, 0.45, 5.4, 3.0, 0, 0xdc2626);
+    }
   }
 
   private buildTaekwondoZone3PoomsaeAndShockwaves(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
     // 1. Poomsae Rapid-Step Belts (curved strip geometry so NEVER sinks below floor!)
     this.buildConveyorBeltsAndFans(false);
 
     // 2. Taekwondo War-Drum Kiai Shockwave Cannons (대북 기합 장풍 충격파!)
-    const drumConfigs = [
-      { zMin: 75, zMax: 81.5, side: -1, dirX: 1, freq: 2.1, phase: 0 },
-      { zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 2.3, phase: 1.6 },
-      { zMin: 90.0, zMax: 96.5, side: -1, dirX: 1, freq: 2.5, phase: 3.1 },
-    ];
+    const drumConfigs = isLight
+      ? [{ zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 1.85, phase: 1.2 }]
+      : [
+          { zMin: 75, zMax: 81.5, side: -1, dirX: 1, freq: 2.1, phase: 0 },
+          { zMin: 82.5, zMax: 89.0, side: 1, dirX: -1, freq: 2.3, phase: 1.6 },
+          { zMin: 90.0, zMax: 96.5, side: -1, dirX: 1, freq: 2.5, phase: 3.1 },
+        ];
 
     for (const dc of drumConfigs) {
       const zMid = (dc.zMin + dc.zMax) * 0.5;
@@ -1056,6 +1130,16 @@ export class ObstacleCourse {
   }
 
   private buildTaekwondoZone4SparringArena(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    if (isLight) {
+      this.addPopupBumpers([{ z: 122.5, offset: 0, phase: 0.9, freq: 3.2 }], 0x2563eb);
+      this.addSwingingPendulums(
+        [{ z: 114, freq: 2.0, phase: 0, maxAngle: 0.82 }],
+        true
+      );
+      return;
+    }
+
     // 1. Pop-up Sparring Kick Launchers at entrance & exit of bridge
     this.addPopupBumpers(
       [
@@ -1537,13 +1621,19 @@ export class ObstacleCourse {
   }
 
   private buildConveyorBeltsAndFans(includeFans: boolean): void {
-    const beltSpecs = [
-      { zMin: 75, zMax: 86, sideOffsetMin: -8.0, sideOffsetMax: -2.6, speedZ: 13.5, isBoost: true },
-      { zMin: 75, zMax: 86, sideOffsetMin: -2.2, sideOffsetMax: 2.2, speedZ: -9.0, isBoost: false },
-      { zMin: 75, zMax: 86, sideOffsetMin: 2.6, sideOffsetMax: 8.0, speedZ: 13.5, isBoost: true },
-      { zMin: 87, zMax: 97, sideOffsetMin: -7.5, sideOffsetMax: 0.0, speedZ: -8.0, isBoost: false },
-      { zMin: 87, zMax: 97, sideOffsetMin: 0.0, sideOffsetMax: 7.5, speedZ: 14.5, isBoost: true },
-    ];
+    const beltSpecs =
+      this.obstacleDensity === 'LIGHT'
+        ? [
+            { zMin: 75, zMax: 86, sideOffsetMin: -8.0, sideOffsetMax: -2.6, speedZ: 13.5, isBoost: true },
+            { zMin: 87, zMax: 97, sideOffsetMin: 0.0, sideOffsetMax: 7.5, speedZ: 14.5, isBoost: true },
+          ]
+        : [
+            { zMin: 75, zMax: 86, sideOffsetMin: -8.0, sideOffsetMax: -2.6, speedZ: 13.5, isBoost: true },
+            { zMin: 75, zMax: 86, sideOffsetMin: -2.2, sideOffsetMax: 2.2, speedZ: -9.0, isBoost: false },
+            { zMin: 75, zMax: 86, sideOffsetMin: 2.6, sideOffsetMax: 8.0, speedZ: 13.5, isBoost: true },
+            { zMin: 87, zMax: 97, sideOffsetMin: -7.5, sideOffsetMax: 0.0, speedZ: -8.0, isBoost: false },
+            { zMin: 87, zMax: 97, sideOffsetMin: 0.0, sideOffsetMax: 7.5, speedZ: 14.5, isBoost: true },
+          ];
 
     for (const cfg of beltSpecs) {
       const zLen = cfg.zMax - cfg.zMin;
@@ -1581,11 +1671,14 @@ export class ObstacleCourse {
 
     if (!includeFans) return;
 
-    const fanConfigs = [
-      { zMin: 75, zMax: 82, side: -1, dirX: 1, force: 34 },
-      { zMin: 82.5, zMax: 89.5, side: 1, dirX: -1, force: 35 },
-      { zMin: 90, zMax: 97, side: -1, dirX: 1, force: 34 },
-    ];
+    const fanConfigs =
+      this.obstacleDensity === 'LIGHT'
+        ? [{ zMin: 79, zMax: 86, side: -1, dirX: 1, force: 18 }]
+        : [
+            { zMin: 75, zMax: 82, side: -1, dirX: 1, force: 34 },
+            { zMin: 82.5, zMax: 89.5, side: 1, dirX: -1, force: 35 },
+            { zMin: 90, zMax: 97, side: -1, dirX: 1, force: 34 },
+          ];
 
     for (const fc of fanConfigs) {
       const zMid = (fc.zMin + fc.zMax) * 0.5;
@@ -1811,18 +1904,25 @@ export class ObstacleCourse {
       roughness: 0.25,
     });
     for (const side of [-1, 1]) {
-      const col = new THREE.Mesh(new THREE.BoxGeometry(0.9, 8.2, 0.9), archMat);
-      col.position.set(side * 8.6, 4.1, 0);
+      const col = new THREE.Mesh(new THREE.BoxGeometry(0.9, 9.4, 0.9), archMat);
+      col.position.set(side * 8.6, 4.7, 0);
       col.castShadow = true;
       finishGroup.add(col);
     }
 
+    const topBannerMat = new THREE.MeshStandardMaterial({
+      map: checkTex,
+      roughness: 0.3,
+      transparent: true,
+      opacity: 1,
+    });
     const topBanner = new THREE.Mesh(
       new THREE.BoxGeometry(18.4, 1.8, 1.1),
-      new THREE.MeshStandardMaterial({ map: checkTex, roughness: 0.3 })
+      topBannerMat
     );
-    topBanner.position.set(0, 7.9, 0);
+    topBanner.position.set(0, 9.0, 0);
     finishGroup.add(topBanner);
+    this.overheadBanners.push({ mat: topBannerMat, z: FINISH_Z });
 
     this.courseGroup.add(finishGroup);
 
@@ -2165,9 +2265,25 @@ export class ObstacleCourse {
     racers: RagdollRacer[],
     particles: ParticleSystem,
     sound: SoundManager,
-    isRacing: boolean = false
+    isRacing: boolean = false,
+    cameraPos?: THREE.Vector3
   ): void {
     this.elapsedTime += dt;
+
+    // 0. Fade overhead arch signs when camera approaches so they never block racer sightlines
+    if (cameraPos) {
+      for (const ob of this.overheadBanners) {
+        const isOccludingRange =
+          cameraPos.z >= ob.z - 12 && cameraPos.z <= ob.z + 1.5;
+        const targetOpacity = isOccludingRange ? 0.14 : 1.0;
+        ob.mat.opacity = THREE.MathUtils.lerp(
+          ob.mat.opacity,
+          targetOpacity,
+          Math.min(1, dt * 10 + 0.15)
+        );
+        ob.mat.depthWrite = ob.mat.opacity > 0.5;
+      }
+    }
 
     // 1. Start Gate animation
     if (this.gateOpen && this.gateOpenProgress < 1) {

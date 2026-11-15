@@ -20,8 +20,8 @@
       href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-BVXFE9zf.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-8Ctw1A7S.css">
+    <script type="module" crossorigin src="./assets/index-BOfL2T6O.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-DmAih2_1.css">
   </head>
   <body>
     <div id="app">
@@ -42,6 +42,14 @@
             title="클릭하여 맵 테마 변경 (운동장 ↔ 태비태권도)"
           >
             🗺️ 맵1: 🏫 운동장
+          </button>
+          <button
+            type="button"
+            class="stage-pill density-switch-pill"
+            id="btn-quick-density-toggle"
+            title="클릭하여 장애물 개수 변경 (많음 ↔ 적음)"
+          >
+            🔥 장애물: 많음
           </button>
           <div class="stage-pill" id="hud-zone-badge">🏠 교실</div>
           <div class="stage-pill timer-pill" id="hud-timer">0.0초</div>
@@ -110,6 +118,18 @@
             <button type="button" class="map-btn" data-map="TAEKWONDO">
               <img src="./taebi-icon.jpg" alt="태비태권도 아이콘" class="map-btn-icon" />
               <span>맵2: 태비태권도</span>
+            </button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <span class="field-label">🧱 장애물 개수 버전</span>
+          <div class="density-selector" role="radiogroup" aria-label="장애물 개수 선택">
+            <button type="button" class="density-btn active" data-density="NORMAL">
+              🔥 장애물 많음 (기본)
+            </button>
+            <button type="button" class="density-btn" data-density="LIGHT">
+              🌿 장애물 적음
             </button>
           </div>
         </div>

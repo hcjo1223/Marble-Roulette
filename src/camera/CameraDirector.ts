@@ -56,7 +56,7 @@ export class CameraDirector {
         this.topPanZ = Math.max(0, Math.min(135, this.topPanZ - dy * 0.25));
       } else {
         this.orbitYaw -= dx * 0.0075;
-        this.orbitPitch = Math.max(0.12, Math.min(1.25, this.orbitPitch + dy * 0.0065));
+        this.orbitPitch = Math.max(0.06, Math.min(1.25, this.orbitPitch + dy * 0.0065));
       }
     });
 
@@ -139,12 +139,16 @@ export class CameraDirector {
     this.mode = mode;
     if (mode !== 'FREE') {
       this.orbitYaw = 0;
+    } else {
+      this.orbitPitch = Math.min(this.orbitPitch, 0.34);
     }
     if (onModeChange) onModeChange(mode);
   }
 
   public focusOnRacer(racerId: string, onModeChange?: (mode: CameraMode) => void): void {
     this.focusedRacerId = racerId;
+    this.orbitYaw = 0;
+    this.orbitPitch = 0.34;
     this.setMode('FREE', onModeChange);
   }
 
@@ -198,19 +202,22 @@ export class CameraDirector {
       desiredPos.set(p.x + offsetX, p.y + offsetY, p.z + offsetZ);
       desiredLook.set(p.x, p.y + 0.8, p.z + 5.5);
     } else if (this.mode === 'FREE') {
-      // Follow clicked racer or decisive racer with full touch/mouse orbit
+      // Tight third-person character focus camera (above pack shoulders, well below overhead signs)
       const target =
         sortedRacers.find((r) => r.id === this.focusedRacerId) ||
         decisiveRacer ||
         pool[0];
+      if (!this.focusedRacerId && target) {
+        this.focusedRacerId = target.id;
+      }
       const p = target.getPosition();
-      const dist = effectiveDist * 0.82;
+      const dist = effectiveDist * 0.44;
       const offsetX = Math.sin(this.orbitYaw) * dist;
       const offsetZ = -Math.cos(this.orbitYaw) * dist;
-      const offsetY = Math.sin(this.orbitPitch) * dist + 1.8;
+      const offsetY = Math.sin(this.orbitPitch) * dist + 1.45;
 
       desiredPos.set(p.x + offsetX, p.y + offsetY, p.z + offsetZ);
-      desiredLook.set(p.x, p.y + 0.6, p.z + 3.5);
+      desiredLook.set(p.x, p.y + 0.65, p.z + 0.85);
     } else {
       // 'LEAD' mode: Follow leading pack & look ahead down the curved track
       const leader = pool[0];
@@ -238,9 +245,9 @@ export class CameraDirector {
       );
     }
 
-    const smoothSpeed = this.isClimaxSlowMo ? 8.5 : 6.0;
+    const smoothSpeed = this.isClimaxSlowMo ? 8.5 : this.mode === 'FREE' ? 9.5 : 6.0;
     this.currentPos.lerp(desiredPos, Math.min(1, realDt * smoothSpeed));
-    this.currentLookAt.lerp(desiredLook, Math.min(1, realDt * (smoothSpeed + 2)));
+    this.currentLookAt.lerp(desiredLook, Math.min(1, realDt * (smoothSpeed + 2.5)));
 
     this.camera.position.copy(this.currentPos);
     this.camera.lookAt(this.currentLookAt);

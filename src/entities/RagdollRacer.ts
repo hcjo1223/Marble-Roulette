@@ -939,7 +939,12 @@ export class RagdollRacer {
           cameraPos.z - torsoPos.z
         )
       : 14;
-    const distScale = Math.max(0.95, Math.min(2.15, camDist / 13.2));
+    const distScale = Math.max(
+      isFocused ? 0.85 : 0.45,
+      Math.min(2.15, camDist / 13.2)
+    );
+    const labelMat = this.labelSprite.material as THREE.SpriteMaterial;
+    labelMat.opacity = !isFocused && camDist < 5.2 ? Math.max(0.28, (camDist - 2.0) / 3.2) : 1.0;
     this.labelSprite.scale.set(2.3 * distScale, 0.65 * distScale, 1);
     this.labelSprite.position.set(
       torsoPos.x,
@@ -947,8 +952,10 @@ export class RagdollRacer {
       torsoPos.z
     );
     this.labelSprite.renderOrder =
-      isFocused || this.isTargetRankCandidate
-        ? 1500
+      isFocused
+        ? 1550
+        : this.isTargetRankCandidate
+        ? 1450
         : Math.max(100, 1200 - Math.round(camDist * 8));
 
     // Selection ring for focused racer or target rank candidate

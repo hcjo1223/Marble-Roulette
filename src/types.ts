@@ -4,6 +4,8 @@ export type WinningRule = 'FIRST' | 'LAST' | 'NTH';
 
 export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO';
 
+export type ObstacleDensity = 'NORMAL' | 'LIGHT';
+
 export type RacerState = 'WAITING' | 'RUNNING' | 'RAGDOLL' | 'RECOVERING' | 'FINISHED';
 
 export interface ParticipantEntry {
