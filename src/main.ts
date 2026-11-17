@@ -208,7 +208,17 @@ class RagdollDerbyGame {
 
   private bindCourseCallbacks(): void {
     this.course.onFinishFlick = (racer, flickNum, isManual) => {
-      if (isManual) {
+      if (this.mapTheme === 'PLAYGROUND') {
+        if (isManual) {
+          this.showBannerMessage(
+            `🏃💥 무스탕 보스 출동! [${racer.name}] 몸통 박치기로 날려버렸다!`
+          );
+        } else {
+          this.showBannerMessage(
+            `🏃💥 ${flickNum}등 [${racer.name}] 거대 캐릭터와 정면 충돌! 대역전 찬스!`
+          );
+        }
+      } else if (isManual) {
         this.showBannerMessage(
           `👆💥 사범님 장난 딱밤! [${racer.name}] 날아갔다!`
         );
@@ -238,6 +248,20 @@ class RagdollDerbyGame {
       quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
       quickMapBtn.classList.toggle('dino-active', this.mapTheme === 'DINOSAUR');
     }
+
+    const prankFlickBtn = document.getElementById('btn-prank-flick');
+    if (prankFlickBtn) {
+      if (this.mapTheme === 'PLAYGROUND') {
+        prankFlickBtn.innerHTML =
+          '<img src="./boss-character.jpg" alt="캐릭터 박치기" class="boss-pill-icon" /><span>1등 박치기!</span>';
+        prankFlickBtn.title = '현재 1등에게 거대 캐릭터 몸통 박치기 발동!';
+      } else {
+        prankFlickBtn.textContent = '👆 1등 딱밤!';
+        prankFlickBtn.title = '현재 1등에게 즉시 거대 딱밤 발사!';
+      }
+    }
+
+    this.syncFlickModeUI();
   }
 
   private syncDensityUI(): void {
@@ -260,12 +284,22 @@ class RagdollDerbyGame {
 
     const quickFlickBtn = document.getElementById('btn-quick-flick-toggle');
     if (quickFlickBtn) {
+      const isPlayground = this.mapTheme === 'PLAYGROUND';
+      const iconHtml = '<img src="./boss-character.jpg" alt="캐릭터" class="boss-pill-icon" />';
       if (this.flickMode === 'OFF') {
-        quickFlickBtn.textContent = '🚫 딱밤: 끔';
+        quickFlickBtn.textContent = isPlayground ? '🚫 박치기: 끔' : '🚫 딱밤: 끔';
       } else if (this.flickMode === 'CHAOS') {
-        quickFlickBtn.textContent = '💥 딱밤: 4명';
+        if (isPlayground) {
+          quickFlickBtn.innerHTML = `${iconHtml}<span>박치기: 4명</span>`;
+        } else {
+          quickFlickBtn.textContent = '💥 딱밤: 4명';
+        }
       } else {
-        quickFlickBtn.textContent = '👆 딱밤: 2명';
+        if (isPlayground) {
+          quickFlickBtn.innerHTML = `${iconHtml}<span>박치기: 2명</span>`;
+        } else {
+          quickFlickBtn.textContent = '👆 딱밤: 2명';
+        }
       }
       quickFlickBtn.classList.toggle('off-active', this.flickMode === 'OFF');
       quickFlickBtn.classList.toggle('chaos-active', this.flickMode === 'CHAOS');
@@ -609,7 +643,12 @@ class RagdollDerbyGame {
   private triggerManualFlickPrank(): void {
     const target = this.course.triggerManualLeaderFlick(this.racers);
     if (!target) {
-      this.showBannerMessage('👆 딱밤 손가락이 출동 중이에요! 잠시만요!', 1.3);
+      this.showBannerMessage(
+        this.mapTheme === 'PLAYGROUND'
+          ? '🏃 거대 캐릭터가 출동 중이에요! 잠시만요!'
+          : '👆 딱밤 손가락이 출동 중이에요! 잠시만요!',
+        1.3
+      );
     }
   }
 

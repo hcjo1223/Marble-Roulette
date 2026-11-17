@@ -138,6 +138,12 @@ interface GiantFlickHandData {
   targetRacer: RagdollRacer | null;
   impactPos: THREE.Vector3;
   isManual: boolean;
+  isCharacterBasher?: boolean;
+  charBodyPivot?: THREE.Group;
+  charLeftArmPivot?: THREE.Group;
+  charRightArmPivot?: THREE.Group;
+  charLeftLegPivot?: THREE.Group;
+  charRightLegPivot?: THREE.Group;
 }
 
 interface FlyingPterosaurData {
@@ -3036,26 +3042,31 @@ export class ObstacleCourse {
 
   private createComicFlickSprite(): THREE.Sprite {
     const canvas = document.createElement('canvas');
-    canvas.width = 340;
+    canvas.width = 360;
     canvas.height = 130;
     const ctx = canvas.getContext('2d')!;
 
-    ctx.fillStyle = '#fef08a';
+    const isPlayground = this.mapTheme === 'PLAYGROUND';
+    const labelText = isPlayground ? '💥 쾅!! 박치기!' : '💥 딱밤!!';
+
+    ctx.fillStyle = isPlayground ? '#fde047' : '#fef08a';
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 8;
     ctx.beginPath();
-    ctx.roundRect(12, 14, 316, 102, 30);
+    ctx.roundRect(12, 14, 336, 102, 30);
     ctx.fill();
     ctx.stroke();
 
-    ctx.font = '900 54px "Plus Jakarta Sans", "Pretendard", sans-serif';
+    ctx.font = isPlayground
+      ? '900 44px "Plus Jakarta Sans", "Pretendard", sans-serif'
+      : '900 54px "Plus Jakarta Sans", "Pretendard", sans-serif';
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
     ctx.lineWidth = 10;
     ctx.strokeStyle = '#0f172a';
-    ctx.strokeText('💥 딱밤!!', 170, 66);
+    ctx.strokeText(labelText, 180, 66);
     ctx.fillStyle = '#ef4444';
-    ctx.fillText('💥 딱밤!!', 170, 66);
+    ctx.fillText(labelText, 180, 66);
 
     const tex = new THREE.CanvasTexture(canvas);
     tex.minFilter = THREE.LinearFilter;
@@ -3067,13 +3078,276 @@ export class ObstacleCourse {
       toneMapped: false,
     });
     const sprite = new THREE.Sprite(mat);
-    sprite.scale.set(5.4, 2.05, 1);
+    sprite.scale.set(5.6, 2.05, 1);
     sprite.renderOrder = 1600;
     sprite.visible = false;
     return sprite;
   }
 
+  /**
+   * Builds the stylized 3D Boss Character modeled after IMG_0009 / boss_character_render:
+   * rounded brown bowl bangs, clear rectangular glasses, plump cheeks, and black shearling
+   * leather aviator jacket with fluffy fur collar, silver zipper, and 3-eyelet strap.
+   * Local forward is +Z; origin (0, 0, 0) sits flush at foot soles.
+   */
+  private createPlaygroundBossCharacter(): {
+    root: THREE.Group;
+    bodyPivot: THREE.Group;
+    leftArmPivot: THREE.Group;
+    rightArmPivot: THREE.Group;
+    leftLegPivot: THREE.Group;
+    rightLegPivot: THREE.Group;
+  } {
+    const root = new THREE.Group();
+
+    const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1b8, roughness: 0.52 });
+    const blushMat = new THREE.MeshStandardMaterial({
+      color: 0xfca5a5,
+      roughness: 0.7,
+      transparent: true,
+      opacity: 0.65,
+    });
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x111827, roughness: 0.25 });
+    const hairMat = new THREE.MeshStandardMaterial({ color: 0x4b2e1b, roughness: 0.58 });
+    const leatherMat = new THREE.MeshStandardMaterial({
+      color: 0x18181b,
+      roughness: 0.36,
+      metalness: 0.14,
+    });
+    const furMat = new THREE.MeshStandardMaterial({
+      color: 0x09090d,
+      roughness: 0.96,
+      metalness: 0.02,
+    });
+    const silverMat = new THREE.MeshStandardMaterial({
+      color: 0xe2e8f0,
+      roughness: 0.2,
+      metalness: 0.85,
+    });
+    const pantsMat = new THREE.MeshStandardMaterial({ color: 0x1e293b, roughness: 0.65 });
+    const soleMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.5 });
+    const glassFrameMat = new THREE.MeshStandardMaterial({
+      color: 0xf8fafc,
+      transparent: true,
+      opacity: 0.65,
+      roughness: 0.12,
+      metalness: 0.2,
+    });
+    const glassLensMat = new THREE.MeshStandardMaterial({
+      color: 0xe0f2fe,
+      transparent: true,
+      opacity: 0.24,
+      roughness: 0.08,
+      metalness: 0.1,
+    });
+
+    // Legs (hip pivots at y = 0.72 so shoe soles rest cleanly at y = 0)
+    const buildLeg = (side: -1 | 1): THREE.Group => {
+      const legPivot = new THREE.Group();
+      legPivot.position.set(side * 0.28, 0.72, 0);
+
+      const pant = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.19, 0.54, 14), pantsMat);
+      pant.position.set(0, -0.27, 0);
+      pant.castShadow = true;
+      legPivot.add(pant);
+
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.15, 0.44), leatherMat);
+      shoe.position.set(0, -0.59, 0.06);
+      shoe.castShadow = true;
+      legPivot.add(shoe);
+
+      const sole = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.06, 0.46), soleMat);
+      sole.position.set(0, -0.69, 0.06);
+      legPivot.add(sole);
+
+      const lace = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.04, 0.14), silverMat);
+      lace.position.set(0, -0.52, 0.14);
+      legPivot.add(lace);
+
+      return legPivot;
+    };
+
+    const leftLegPivot = buildLeg(-1);
+    const rightLegPivot = buildLeg(1);
+    root.add(leftLegPivot, rightLegPivot);
+
+    // Upper body pivot at waist (y = 0.76) so shoulder-bash leans forward dynamically!
+    const bodyPivot = new THREE.Group();
+    bodyPivot.position.set(0, 0.76, 0);
+    root.add(bodyPivot);
+
+    // Shearling leather aviator jacket torso
+    const torso = new THREE.Mesh(new THREE.BoxGeometry(1.16, 1.04, 0.72), leatherMat);
+    torso.position.set(0, 0.52, 0);
+    torso.castShadow = true;
+    bodyPivot.add(torso);
+
+    // Fluffy shearling hem trim
+    const hemFur = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.15, 0.78), furMat);
+    hemFur.position.set(0, 0.06, 0);
+    bodyPivot.add(hemFur);
+
+    // Fluffy black shearling collar (left & right lapels + back roll)
+    const collarBack = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.24, 0.46), furMat);
+    collarBack.position.set(0, 1.04, -0.14);
+    bodyPivot.add(collarBack);
+
+    for (const side of [-1, 1]) {
+      const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.3, 0.32), furMat);
+      lapel.position.set(side * 0.34, 0.96, 0.28);
+      lapel.rotation.z = -side * 0.36;
+      lapel.rotation.y = side * 0.15;
+      lapel.castShadow = true;
+      bodyPivot.add(lapel);
+    }
+
+    // Center silver zipper & pull tab (+Z chest)
+    const zipper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.88, 0.04), silverMat);
+    zipper.position.set(0, 0.48, 0.365);
+    bodyPivot.add(zipper);
+
+    const zipPull = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.14, 0.05), silverMat);
+    zipPull.position.set(0, 0.76, 0.38);
+    bodyPivot.add(zipPull);
+
+    // Signature collar buckle strap with 3 silver eyelets (viewer's left / character's right chest)
+    const strap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.34, 0.04), leatherMat);
+    strap.position.set(-0.24, 0.72, 0.375);
+    strap.rotation.z = 0.2;
+    bodyPivot.add(strap);
+    for (let e = 0; e < 3; e++) {
+      const eyelet = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 10), silverMat);
+      eyelet.rotation.x = Math.PI * 0.5;
+      eyelet.position.set(-0.26 + e * 0.02, 0.8 - e * 0.09, 0.39);
+      bodyPivot.add(eyelet);
+    }
+
+    // Arms with shearling cuffs
+    const buildArm = (side: -1 | 1): THREE.Group => {
+      const armPivot = new THREE.Group();
+      armPivot.position.set(side * 0.73, 0.9, 0);
+
+      const sleeve = new THREE.Mesh(new THREE.CylinderGeometry(0.19, 0.17, 0.58, 14), leatherMat);
+      sleeve.position.set(0, -0.26, 0);
+      sleeve.castShadow = true;
+      armPivot.add(sleeve);
+
+      const cuff = new THREE.Mesh(new THREE.CylinderGeometry(0.21, 0.21, 0.14, 14), furMat);
+      cuff.position.set(0, -0.56, 0);
+      armPivot.add(cuff);
+
+      const hand = new THREE.Mesh(new THREE.SphereGeometry(0.18, 14, 12), skinMat);
+      hand.position.set(0, -0.71, 0.02);
+      hand.castShadow = true;
+      armPivot.add(hand);
+
+      return armPivot;
+    };
+
+    const leftArmPivot = buildArm(-1);
+    const rightArmPivot = buildArm(1);
+    bodyPivot.add(leftArmPivot, rightArmPivot);
+
+    // Chibi-proportioned head (matching boss_character_render.jpg)
+    const headGroup = new THREE.Group();
+    headGroup.position.set(0, 1.54, 0.02);
+    bodyPivot.add(headGroup);
+
+    const faceMesh = new THREE.Mesh(new THREE.SphereGeometry(0.62, 24, 20), skinMat);
+    faceMesh.scale.set(1.06, 0.94, 0.98);
+    faceMesh.castShadow = true;
+    headGroup.add(faceMesh);
+
+    for (const side of [-1, 1]) {
+      const ear = new THREE.Mesh(new THREE.SphereGeometry(0.13, 12, 10), skinMat);
+      ear.position.set(side * 0.63, -0.02, -0.02);
+      headGroup.add(ear);
+
+      const cheek = new THREE.Mesh(new THREE.SphereGeometry(0.14, 12, 10), blushMat);
+      cheek.scale.set(1.2, 0.75, 0.4);
+      cheek.position.set(side * 0.34, -0.14, 0.52);
+      headGroup.add(cheek);
+
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.068, 12, 10), eyeMat);
+      eye.scale.set(0.85, 1.25, 0.6);
+      eye.position.set(side * 0.2, 0.04, 0.58);
+      headGroup.add(eye);
+    }
+
+    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.055, 10, 8), skinMat);
+    nose.position.set(0, -0.06, 0.62);
+    headGroup.add(nose);
+
+    const mouth = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.032, 0.04), eyeMat);
+    mouth.position.set(0, -0.22, 0.57);
+    headGroup.add(mouth);
+
+    // Signature rounded dark-brown bowl-cut bangs hair
+    const crownHair = new THREE.Mesh(
+      new THREE.SphereGeometry(0.66, 24, 18, 0, Math.PI * 2, 0, Math.PI * 0.58),
+      hairMat
+    );
+    crownHair.scale.set(1.05, 0.92, 1.03);
+    crownHair.position.set(0, 0.07, -0.02);
+    crownHair.castShadow = true;
+    headGroup.add(crownHair);
+
+    const backHair = new THREE.Mesh(new THREE.CylinderGeometry(0.66, 0.63, 0.42, 20), hairMat);
+    backHair.position.set(0, 0.04, -0.08);
+    headGroup.add(backHair);
+
+    // Rounded bang strands across forehead above glasses
+    for (let i = -3; i <= 3; i++) {
+      const ang = i * 0.24;
+      const bang = new THREE.Mesh(new THREE.CapsuleGeometry(0.11, 0.22, 6, 10), hairMat);
+      bang.position.set(Math.sin(ang) * 0.56, 0.25 - Math.abs(i) * 0.015, Math.cos(ang) * 0.55);
+      bang.rotation.x = 0.22;
+      bang.rotation.y = ang;
+      headGroup.add(bang);
+    }
+
+    // Clear rectangular eyeglasses (top/bottom/outer/inner bars + bridge + temples + tinted lenses)
+    const glassesGroup = new THREE.Group();
+    glassesGroup.position.set(0, 0.03, 0.64);
+    headGroup.add(glassesGroup);
+
+    const bridge = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.045, 0.04), glassFrameMat);
+    bridge.position.set(0, 0.06, 0);
+    glassesGroup.add(bridge);
+
+    for (const side of [-1, 1]) {
+      const cx = side * 0.24;
+      const lens = new THREE.Mesh(new THREE.BoxGeometry(0.32, 0.23, 0.02), glassLensMat);
+      lens.position.set(cx, 0, 0);
+      glassesGroup.add(lens);
+
+      const topBar = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.042, 0.045), glassFrameMat);
+      topBar.position.set(cx, 0.125, 0);
+      const botBar = new THREE.Mesh(new THREE.BoxGeometry(0.36, 0.038, 0.045), glassFrameMat);
+      botBar.position.set(cx, -0.12, 0);
+      const leftBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.26, 0.045), glassFrameMat);
+      leftBar.position.set(cx - 0.17, 0, 0);
+      const rightBar = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.26, 0.045), glassFrameMat);
+      rightBar.position.set(cx + 0.17, 0, 0);
+      const temple = new THREE.Mesh(new THREE.BoxGeometry(0.04, 0.045, 0.58), glassFrameMat);
+      temple.position.set(side * 0.54, 0.06, -0.29);
+      temple.rotation.y = side * 0.16;
+
+      glassesGroup.add(topBar, botBar, leftBar, rightBar, temple);
+    }
+
+    return {
+      root,
+      bodyPivot,
+      leftArmPivot,
+      rightArmPivot,
+      leftLegPivot,
+      rightLegPivot,
+    };
+  }
+
   private buildFinishFlickHands(): void {
+    const isPlayground = this.mapTheme === 'PLAYGROUND';
     const skinMat = new THREE.MeshStandardMaterial({
       color: 0xffccb3,
       roughness: 0.42,
@@ -3092,126 +3366,153 @@ export class ObstacleCourse {
     const cuffWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
 
     for (let slotIndex = 0; slotIndex < 2; slotIndex++) {
-      const root = new THREE.Group();
+      let root: THREE.Group;
+      let middleFingerPivot = new THREE.Group();
+      let charParts:
+        | {
+            bodyPivot: THREE.Group;
+            leftArmPivot: THREE.Group;
+            rightArmPivot: THREE.Group;
+            leftLegPivot: THREE.Group;
+            rightLegPivot: THREE.Group;
+          }
+        | undefined;
 
-      // Forearm & Wristband (descending from above)
-      const forearm = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.68, 0.78, 2.2, 16),
-        skinMat
-      );
-      forearm.position.set(0, 2.55, 0.1);
-      forearm.castShadow = true;
-      root.add(forearm);
+      if (isPlayground) {
+        const built = this.createPlaygroundBossCharacter();
+        root = built.root;
+        charParts = built;
 
-      const cuffRed = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.84, 0.84, 0.62, 18),
-        cuffRedMat
-      );
-      cuffRed.position.set(0, 1.5, 0.1);
-      root.add(cuffRed);
+        root.scale.setScalar(1.95);
+        const hoverZ = this.finishZ - 4.0;
+        const hoverCX = this.getTrackCenterX(hoverZ) + 6.0;
+        const hoverY = this.getTrackHeightAtZ(hoverZ) + 0.1;
+        root.position.set(hoverCX, hoverY, hoverZ);
+        root.rotation.set(0, Math.PI + 0.48, 0);
+        root.visible = slotIndex === 0 && this.flickMode !== 'OFF';
+        this.courseGroup.add(root);
+      } else {
+        root = new THREE.Group();
 
-      const cuffStripe = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.86, 0.86, 0.2, 18),
-        cuffWhiteMat
-      );
-      cuffStripe.position.set(0, 1.5, 0.1);
-      root.add(cuffStripe);
-
-      // Chunky Cartoon Palm (back of hand faces -Z toward approaching racers; palm faces +Z)
-      const palm = new THREE.Mesh(new THREE.BoxGeometry(2.15, 2.0, 0.82), skinMat);
-      palm.position.set(0, 0.1, 0);
-      palm.castShadow = true;
-      root.add(palm);
-
-      const knucklePad = new THREE.Mesh(
-        new THREE.CylinderGeometry(0.42, 0.42, 2.15, 14),
-        skinMat
-      );
-      knucklePad.rotation.z = Math.PI * 0.5;
-      knucklePad.position.set(0, -0.88, 0);
-      root.add(knucklePad);
-
-      // Thumb bracing on +Z palm side for the middle-finger cocking pose
-      const thumbPivot = new THREE.Group();
-      thumbPivot.position.set(-0.98, -0.05, 0.34);
-      thumbPivot.rotation.set(0.35, 0.25, 0.78);
-      const thumbSeg = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.3, 0.82, 8, 12),
-        skinMat
-      );
-      thumbSeg.position.set(0.1, -0.5, 0.22);
-      thumbPivot.add(thumbSeg);
-      const thumbNail = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.1), nailMat);
-      thumbNail.position.set(0.1, -0.86, -0.04);
-      thumbPivot.add(thumbNail);
-      root.add(thumbPivot);
-
-      // Curled Index, Ring, and Pinky fingers tucked neatly into the +Z palm
-      const curledConfigs = [
-        { x: -0.62, scale: 0.92 }, // Index
-        { x: 0.58, scale: 0.9 },   // Ring
-        { x: 1.0, scale: 0.76 },   // Pinky
-      ];
-      for (const cfg of curledConfigs) {
-        const finger = new THREE.Group();
-        finger.position.set(cfg.x, -0.9, 0.08);
-        finger.rotation.x = -1.35; // Curled into +Z palm
-        const seg1 = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.24 * cfg.scale, 0.65 * cfg.scale, 6, 10),
-          skinAccentMat
-        );
-        seg1.position.set(0, -0.45 * cfg.scale, 0);
-        finger.add(seg1);
-        const seg2 = new THREE.Mesh(
-          new THREE.CapsuleGeometry(0.22 * cfg.scale, 0.55 * cfg.scale, 6, 10),
+        // Forearm & Wristband (descending from above)
+        const forearm = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.68, 0.78, 2.2, 16),
           skinMat
         );
-        seg2.position.set(0, -0.78 * cfg.scale, 0.38 * cfg.scale);
-        seg2.rotation.x = -1.0;
-        finger.add(seg2);
-        root.add(finger);
+        forearm.position.set(0, 2.55, 0.1);
+        forearm.castShadow = true;
+        root.add(forearm);
+
+        const cuffRed = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.84, 0.84, 0.62, 18),
+          cuffRedMat
+        );
+        cuffRed.position.set(0, 1.5, 0.1);
+        root.add(cuffRed);
+
+        const cuffStripe = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.86, 0.86, 0.2, 18),
+          cuffWhiteMat
+        );
+        cuffStripe.position.set(0, 1.5, 0.1);
+        root.add(cuffStripe);
+
+        // Chunky Cartoon Palm (back of hand faces -Z toward approaching racers; palm faces +Z)
+        const palm = new THREE.Mesh(new THREE.BoxGeometry(2.15, 2.0, 0.82), skinMat);
+        palm.position.set(0, 0.1, 0);
+        palm.castShadow = true;
+        root.add(palm);
+
+        const knucklePad = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.42, 0.42, 2.15, 14),
+          skinMat
+        );
+        knucklePad.rotation.z = Math.PI * 0.5;
+        knucklePad.position.set(0, -0.88, 0);
+        root.add(knucklePad);
+
+        // Thumb bracing on +Z palm side for the middle-finger cocking pose
+        const thumbPivot = new THREE.Group();
+        thumbPivot.position.set(-0.98, -0.05, 0.34);
+        thumbPivot.rotation.set(0.35, 0.25, 0.78);
+        const thumbSeg = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.3, 0.82, 8, 12),
+          skinMat
+        );
+        thumbSeg.position.set(0.1, -0.5, 0.22);
+        thumbPivot.add(thumbSeg);
+        const thumbNail = new THREE.Mesh(new THREE.BoxGeometry(0.34, 0.3, 0.1), nailMat);
+        thumbNail.position.set(0.1, -0.86, -0.04);
+        thumbPivot.add(thumbNail);
+        root.add(thumbPivot);
+
+        // Curled Index, Ring, and Pinky fingers tucked neatly into the +Z palm
+        const curledConfigs = [
+          { x: -0.62, scale: 0.92 }, // Index
+          { x: 0.58, scale: 0.9 },   // Ring
+          { x: 1.0, scale: 0.76 },   // Pinky
+        ];
+        for (const cfg of curledConfigs) {
+          const finger = new THREE.Group();
+          finger.position.set(cfg.x, -0.9, 0.08);
+          finger.rotation.x = -1.35; // Curled into +Z palm
+          const seg1 = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.24 * cfg.scale, 0.65 * cfg.scale, 6, 10),
+            skinAccentMat
+          );
+          seg1.position.set(0, -0.45 * cfg.scale, 0);
+          finger.add(seg1);
+          const seg2 = new THREE.Mesh(
+            new THREE.CapsuleGeometry(0.22 * cfg.scale, 0.55 * cfg.scale, 6, 10),
+            skinMat
+          );
+          seg2.position.set(0, -0.78 * cfg.scale, 0.38 * cfg.scale);
+          seg2.rotation.x = -1.0;
+          finger.add(seg2);
+          root.add(finger);
+        }
+
+        // Giant Articulated Middle Finger (딱밤 striking finger!)
+        middleFingerPivot = new THREE.Group();
+        middleFingerPivot.position.set(-0.02, -0.9, 0);
+
+        const midBase = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.34, 0.98, 8, 14),
+          skinMat
+        );
+        midBase.position.set(0, -0.58, 0);
+        midBase.castShadow = true;
+        middleFingerPivot.add(midBase);
+
+        const midTip = new THREE.Mesh(
+          new THREE.CapsuleGeometry(0.31, 0.85, 8, 14),
+          skinMat
+        );
+        midTip.position.set(0, -1.42, -0.04);
+        midTip.castShadow = true;
+        middleFingerPivot.add(midTip);
+
+        // Bright white cartoon fingernail on -Z face (the flicking impact surface!)
+        const midNail = new THREE.Mesh(
+          new THREE.BoxGeometry(0.42, 0.44, 0.14),
+          nailMat
+        );
+        midNail.position.set(0, -1.66, -0.32);
+        middleFingerPivot.add(midNail);
+
+        root.add(middleFingerPivot);
+
+        root.scale.setScalar(1.32);
+        root.rotation.set(0.18, 0.42, -0.08);
+        middleFingerPivot.rotation.x = -1.25;
+
+        const hoverZ = this.finishZ - 5.0;
+        const hoverCX = this.getTrackCenterX(hoverZ);
+        const hoverY = this.getTrackHeightAtZ(hoverZ) + 7.4;
+        root.position.set(hoverCX, hoverY, hoverZ);
+        root.visible = slotIndex === 0 && this.flickMode !== 'OFF';
+        this.courseGroup.add(root);
       }
-
-      // Giant Articulated Middle Finger (딱밤 striking finger!)
-      const middleFingerPivot = new THREE.Group();
-      middleFingerPivot.position.set(-0.02, -0.9, 0);
-
-      const midBase = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.34, 0.98, 8, 14),
-        skinMat
-      );
-      midBase.position.set(0, -0.58, 0);
-      midBase.castShadow = true;
-      middleFingerPivot.add(midBase);
-
-      const midTip = new THREE.Mesh(
-        new THREE.CapsuleGeometry(0.31, 0.85, 8, 14),
-        skinMat
-      );
-      midTip.position.set(0, -1.42, -0.04);
-      midTip.castShadow = true;
-      middleFingerPivot.add(midTip);
-
-      // Bright white cartoon fingernail on -Z face (the flicking impact surface!)
-      const midNail = new THREE.Mesh(
-        new THREE.BoxGeometry(0.42, 0.44, 0.14),
-        nailMat
-      );
-      midNail.position.set(0, -1.66, -0.32);
-      middleFingerPivot.add(midNail);
-
-      root.add(middleFingerPivot);
-
-      root.scale.setScalar(1.32);
-      root.rotation.set(0.18, 0.42, -0.08);
-      middleFingerPivot.rotation.x = -1.25;
-
-      const hoverZ = this.finishZ - 5.0;
-      const hoverCX = this.getTrackCenterX(hoverZ);
-      const hoverY = this.getTrackHeightAtZ(hoverZ) + 7.4;
-      root.position.set(hoverCX, hoverY, hoverZ);
-      root.visible = slotIndex === 0 && this.flickMode !== 'OFF';
-      this.courseGroup.add(root);
 
       const shockwaveMat = new THREE.MeshBasicMaterial({
         color: 0xfacc15,
@@ -3241,6 +3542,12 @@ export class ObstacleCourse {
         targetRacer: null,
         impactPos: new THREE.Vector3(),
         isManual: false,
+        isCharacterBasher: isPlayground,
+        charBodyPivot: charParts?.bodyPivot,
+        charLeftArmPivot: charParts?.leftArmPivot,
+        charRightArmPivot: charParts?.rightArmPivot,
+        charLeftLegPivot: charParts?.leftLegPivot,
+        charRightLegPivot: charParts?.rightLegPivot,
       });
     }
   }
@@ -3277,13 +3584,24 @@ export class ObstacleCourse {
     hand.targetRacer = target;
     hand.isManual = true;
     hand.root.visible = true;
-    hand.root.scale.setScalar(1.45);
     hand.shockwaveMesh.visible = false;
     hand.comicSprite.visible = false;
 
     const side = hand.slotIndex === 0 ? 1 : -1;
     const tp = target.getPosition();
-    hand.root.position.set(tp.x + side * 2.5, tp.y + 4.4, tp.z + 1.2);
+    if (hand.isCharacterBasher) {
+      hand.root.scale.setScalar(1.65);
+      const floorY = this.getTrackHeightAtZ(tp.z + 2.0);
+      hand.root.position.set(tp.x + side * 3.4, floorY + 0.1, tp.z + 2.2);
+      hand.root.rotation.set(
+        0,
+        Math.atan2(tp.x - hand.root.position.x, tp.z - hand.root.position.z),
+        0
+      );
+    } else {
+      hand.root.scale.setScalar(1.45);
+      hand.root.position.set(tp.x + side * 2.5, tp.y + 4.4, tp.z + 1.2);
+    }
     return target;
   }
 
@@ -3296,20 +3614,33 @@ export class ObstacleCourse {
     this.startGateMesh.position.set(cx, baseY, z);
     this.startGateBody.setNextKinematicTranslation({ x: cx, y: baseY, z });
 
-    // Reset finish-line Giant Finger Flick trap
+    // Reset finish-line Giant Finger Flick / Playground Character Basher trap
     this.flickedRacerIds.clear();
     const hoverZ = this.finishZ - 4.0;
-    const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
-    const hoverY = this.getTrackHeightAtZ(hoverZ) + 6.8;
     for (const hand of this.giantFlickHands) {
       hand.phase = 'IDLE';
       hand.phaseTimer = 0;
       hand.targetRacer = null;
       hand.isManual = false;
-      hand.root.scale.setScalar(1.38);
-      hand.root.position.set(hoverCX, hoverY, hoverZ);
-      hand.root.rotation.set(0.16, -0.52, 0.24);
-      hand.middleFingerPivot.rotation.x = -1.25;
+      if (hand.isCharacterBasher) {
+        const hoverCX = this.getTrackCenterX(hoverZ) + 6.2;
+        const hoverY = this.getTrackHeightAtZ(hoverZ) + 0.1;
+        hand.root.scale.setScalar(1.65);
+        hand.root.position.set(hoverCX, hoverY, hoverZ);
+        hand.root.rotation.set(0, -0.78, 0);
+        hand.charBodyPivot?.rotation.set(0, 0, 0);
+        hand.charLeftArmPivot?.rotation.set(0, 0, 0);
+        hand.charRightArmPivot?.rotation.set(0, 0, 0);
+        hand.charLeftLegPivot?.rotation.set(0, 0, 0);
+        hand.charRightLegPivot?.rotation.set(0, 0, 0);
+      } else {
+        const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
+        const hoverY = this.getTrackHeightAtZ(hoverZ) + 6.8;
+        hand.root.scale.setScalar(1.38);
+        hand.root.position.set(hoverCX, hoverY, hoverZ);
+        hand.root.rotation.set(0.16, -0.52, 0.24);
+        hand.middleFingerPivot.rotation.x = -1.25;
+      }
       hand.root.visible = hand.slotIndex === 0 && this.flickMode !== 'OFF';
       hand.shockwaveMesh.visible = false;
       hand.comicSprite.visible = false;
@@ -3752,7 +4083,7 @@ export class ObstacleCourse {
       }
     }
 
-    // 12. Pre-Finish Giant Finger Flick (딱밤 스위치: OFF / DOUBLE / CHAOS + 수동 딱밤!)
+    // 12. Pre-Finish Giant Finger Flick / Playground Character Bash (딱밤/박치기 스위치)
     const maxFlicks = this.getMaxFlicks(racers.length);
     const triggerFlickZoneZ = this.finishZ - 5.8;
 
@@ -3776,11 +4107,23 @@ export class ObstacleCourse {
         freeHand.targetRacer = target;
         freeHand.isManual = false;
         freeHand.root.visible = true;
-        freeHand.root.scale.setScalar(1.45);
 
         const side = freeHand.slotIndex === 0 ? 1 : -1;
         const tp = target.getPosition();
-        freeHand.root.position.set(tp.x + side * 2.5, tp.y + 4.4, tp.z + 1.2);
+        if (freeHand.isCharacterBasher) {
+          freeHand.root.scale.setScalar(1.95);
+          const spawnZ = tp.z + 2.8;
+          const floorY = this.getTrackHeightAtZ(spawnZ);
+          freeHand.root.position.set(tp.x + side * 4.2, floorY + 0.1, spawnZ);
+          freeHand.root.rotation.set(
+            0,
+            Math.atan2(tp.x - freeHand.root.position.x, tp.z - freeHand.root.position.z),
+            0
+          );
+        } else {
+          freeHand.root.scale.setScalar(1.45);
+          freeHand.root.position.set(tp.x + side * 2.5, tp.y + 4.4, tp.z + 1.2);
+        }
       }
     }
 
@@ -3794,16 +4137,34 @@ export class ObstacleCourse {
         ) {
           hand.root.visible = true;
           const hoverZ = this.finishZ - 4.0;
-          const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
-          const hoverY =
-            this.getTrackHeightAtZ(hoverZ) + 6.8 + Math.sin(this.elapsedTime * 2.6) * 0.45;
-          hand.root.position.set(
-            hoverCX + Math.sin(this.elapsedTime * 1.4) * 1.4,
-            hoverY,
-            hoverZ
-          );
-          hand.root.rotation.set(0.16, -0.52 + Math.sin(this.elapsedTime * 1.2) * 0.08, 0.24);
-          hand.middleFingerPivot.rotation.x = -1.25 - Math.sin(this.elapsedTime * 5.0) * 0.08;
+          if (hand.isCharacterBasher) {
+            const hoverCX = this.getTrackCenterX(hoverZ) + 6.0;
+            const hoverY = this.getTrackHeightAtZ(hoverZ) + 0.1;
+            const idleBounce = Math.abs(Math.sin(this.elapsedTime * 3.6)) * 0.16;
+            hand.root.scale.setScalar(1.95);
+            hand.root.position.set(hoverCX, hoverY + idleBounce, hoverZ);
+            hand.root.rotation.set(0, Math.PI + 0.48 + Math.sin(this.elapsedTime * 1.4) * 0.14, 0);
+            hand.charBodyPivot?.rotation.set(0.04, 0, Math.sin(this.elapsedTime * 2.4) * 0.05);
+            if (hand.charLeftArmPivot && hand.charRightArmPivot) {
+              hand.charLeftArmPivot.rotation.x = Math.sin(this.elapsedTime * 3.6) * 0.25;
+              hand.charRightArmPivot.rotation.x = -Math.sin(this.elapsedTime * 3.6) * 0.25;
+            }
+            if (hand.charLeftLegPivot && hand.charRightLegPivot) {
+              hand.charLeftLegPivot.rotation.x = 0;
+              hand.charRightLegPivot.rotation.x = 0;
+            }
+          } else {
+            const hoverCX = this.getTrackCenterX(hoverZ) + 4.4;
+            const hoverY =
+              this.getTrackHeightAtZ(hoverZ) + 6.8 + Math.sin(this.elapsedTime * 2.6) * 0.45;
+            hand.root.position.set(
+              hoverCX + Math.sin(this.elapsedTime * 1.4) * 1.4,
+              hoverY,
+              hoverZ
+            );
+            hand.root.rotation.set(0.16, -0.52 + Math.sin(this.elapsedTime * 1.2) * 0.08, 0.24);
+            hand.middleFingerPivot.rotation.x = -1.25 - Math.sin(this.elapsedTime * 5.0) * 0.08;
+          }
         } else {
           hand.root.visible = false;
         }
@@ -3820,23 +4181,69 @@ export class ObstacleCourse {
         }
 
         const tp = target.getPosition();
-        const windRatio = Math.min(1, hand.phaseTimer / 0.11);
-        // Offset hand to the side of the racer so trailing/climax cameras have an unobstructed side view of the flick
-        const desiredPos = new THREE.Vector3(tp.x + side * 2.1, tp.y + 1.95, tp.z + 1.15);
-        hand.root.position.lerp(desiredPos, Math.min(1, dt * 42));
-        hand.root.rotation.set(0.12, -side * 0.62, side * 0.34);
-        // Tightly curl middle finger against thumb before snapping
-        hand.middleFingerPivot.rotation.x = THREE.MathUtils.lerp(-1.25, -1.58, windRatio);
+        const windupDur = hand.isCharacterBasher ? 0.18 : 0.11;
+        const windRatio = Math.min(1, hand.phaseTimer / windupDur);
 
-        // Execute SNAP impact at 0.11s or sooner if racer nears finish line
-        if (hand.phaseTimer >= 0.11 || tp.z >= this.finishZ - 3.2) {
+        if (hand.isCharacterBasher) {
+          const targetZ = tp.z + 1.05;
+          const desiredPos = new THREE.Vector3(
+            tp.x + side * 0.65,
+            this.getTrackHeightAtZ(targetZ) + 0.08,
+            targetZ
+          );
+          hand.root.position.lerp(desiredPos, Math.min(1, dt * 28));
+          hand.root.rotation.set(
+            0,
+            Math.atan2(tp.x - hand.root.position.x, tp.z - hand.root.position.z),
+            0
+          );
+          hand.charBodyPivot?.rotation.set(THREE.MathUtils.lerp(0.08, 0.3, windRatio), 0, 0);
+          const stride = Math.sin(hand.phaseTimer * 42) * 0.85;
+          if (hand.charLeftLegPivot && hand.charRightLegPivot) {
+            hand.charLeftLegPivot.rotation.x = stride;
+            hand.charRightLegPivot.rotation.x = -stride;
+          }
+          if (hand.charLeftArmPivot && hand.charRightArmPivot) {
+            hand.charLeftArmPivot.rotation.x = -stride * 0.85;
+            hand.charRightArmPivot.rotation.x = stride * 0.85;
+          }
+        } else {
+          // Offset hand to the side of the racer so trailing/climax cameras have an unobstructed side view of the flick
+          const desiredPos = new THREE.Vector3(tp.x + side * 2.1, tp.y + 1.95, tp.z + 1.15);
+          hand.root.position.lerp(desiredPos, Math.min(1, dt * 42));
+          hand.root.rotation.set(0.12, -side * 0.62, side * 0.34);
+          // Tightly curl middle finger against thumb before snapping
+          hand.middleFingerPivot.rotation.x = THREE.MathUtils.lerp(-1.25, -1.58, windRatio);
+        }
+
+        // Execute SNAP / BASH impact at end of windup or sooner if racer nears finish line
+        if (hand.phaseTimer >= windupDur || tp.z >= this.finishZ - 3.2) {
           hand.phase = 'IMPACT';
           hand.phaseTimer = 0;
-          hand.impactPos.set(tp.x, tp.y + 0.4, tp.z);
+          hand.impactPos.set(tp.x, tp.y + 0.6, tp.z);
 
-          // Violent snap forward toward -Z!
-          hand.middleFingerPivot.rotation.x = 0.85;
-          hand.root.position.set(tp.x + side * 1.95, tp.y + 1.75, tp.z + 0.85);
+          if (hand.isCharacterBasher) {
+            const impactZ = tp.z + 1.05;
+            hand.root.position.set(
+              tp.x + side * 0.72,
+              this.getTrackHeightAtZ(impactZ) + 0.08,
+              impactZ
+            );
+            hand.root.rotation.set(
+              0,
+              Math.atan2(tp.x - hand.root.position.x, tp.z - hand.root.position.z),
+              0
+            );
+            hand.charBodyPivot?.rotation.set(0.32, side * 0.36, 0);
+            if (hand.charLeftArmPivot && hand.charRightArmPivot) {
+              hand.charLeftArmPivot.rotation.x = -0.65;
+              hand.charRightArmPivot.rotation.x = 0.55;
+            }
+          } else {
+            // Violent snap forward toward -Z!
+            hand.middleFingerPivot.rotation.x = 0.85;
+            hand.root.position.set(tp.x + side * 1.95, tp.y + 1.75, tp.z + 0.85);
+          }
 
           const cx = this.getTrackCenterX(tp.z);
           const inwardVx = THREE.MathUtils.clamp(
@@ -3854,6 +4261,9 @@ export class ObstacleCourse {
 
           particles.spawnHitBurst(hand.impactPos, '#facc15', 20);
           particles.spawnHitBurst(hand.impactPos, '#ef4444', 12);
+          if (hand.isCharacterBasher) {
+            sound.playRagdollHit(1.75);
+          }
           sound.playFingerFlick();
 
           hand.shockwaveMesh.visible = true;
@@ -3862,7 +4272,11 @@ export class ObstacleCourse {
           (hand.shockwaveMesh.material as THREE.MeshBasicMaterial).opacity = 0.95;
 
           hand.comicSprite.visible = true;
-          hand.comicSprite.position.set(tp.x, tp.y + 2.2, tp.z);
+          hand.comicSprite.position.set(
+            tp.x - (hand.isCharacterBasher ? side * 1.4 : 0),
+            tp.y + (hand.isCharacterBasher ? 4.3 : 2.4),
+            tp.z
+          );
           (hand.comicSprite.material as THREE.SpriteMaterial).opacity = 1;
 
           if (this.onFinishFlick) {
@@ -3873,9 +4287,19 @@ export class ObstacleCourse {
         hand.phaseTimer += dt;
         const t = Math.min(1, hand.phaseTimer / 0.72);
 
-        // Slight recoil lift & finger follow-through wobble
-        hand.root.position.y += dt * 4.2;
-        hand.middleFingerPivot.rotation.x = 0.72 + Math.sin(hand.phaseTimer * 36) * 0.14 * (1 - t);
+        if (hand.isCharacterBasher) {
+          // Recoil pose holding sturdy shoulder-bash follow-through on track
+          hand.root.position.z += dt * 1.4;
+          hand.charBodyPivot?.rotation.set(
+            THREE.MathUtils.lerp(0.32, 0.02, t),
+            THREE.MathUtils.lerp(side * 0.36, 0, t),
+            0
+          );
+        } else {
+          // Slight recoil lift & finger follow-through wobble
+          hand.root.position.y += dt * 4.2;
+          hand.middleFingerPivot.rotation.x = 0.72 + Math.sin(hand.phaseTimer * 36) * 0.14 * (1 - t);
+        }
 
         // Shockwave ring expands rapidly and fades
         const ringScale = 0.6 + t * 4.6;
@@ -3885,10 +4309,11 @@ export class ObstacleCourse {
           (1 - t) * 0.95
         );
 
-        // Comic "💥 딱밤!!" sprite pops up and fades
-        hand.comicSprite.position.y = hand.impactPos.y + 2.1 + t * 2.0;
+        // Comic banner sprite pops up above character head and fades
+        const spriteBaseY = hand.isCharacterBasher ? 4.2 : 2.1;
+        hand.comicSprite.position.y = hand.impactPos.y + spriteBaseY + t * 1.8;
         const popScale = t < 0.2 ? 0.65 + (t / 0.2) * 0.48 : 1.13;
-        hand.comicSprite.scale.set(5.2 * popScale, 1.98 * popScale, 1);
+        hand.comicSprite.scale.set(5.4 * popScale, 1.98 * popScale, 1);
         (hand.comicSprite.material as THREE.SpriteMaterial).opacity =
           t > 0.65 ? Math.max(0, (1 - t) / 0.35) : 1;
 
@@ -3905,6 +4330,7 @@ export class ObstacleCourse {
             hand.phase = 'IDLE';
             hand.phaseTimer = 0;
             hand.middleFingerPivot.rotation.x = -1.25;
+            hand.charBodyPivot?.rotation.set(0, 0, 0);
           } else {
             hand.phase = 'DONE';
             hand.phaseTimer = 0;
@@ -3913,7 +4339,8 @@ export class ObstacleCourse {
       } else if (hand.phase === 'DONE') {
         hand.phaseTimer += dt;
         hand.root.position.y += dt * 16;
-        const shrink = Math.max(0.01, 1.38 * (1 - hand.phaseTimer * 2.5));
+        const baseScale = hand.isCharacterBasher ? 1.95 : 1.38;
+        const shrink = Math.max(0.01, baseScale * (1 - hand.phaseTimer * 2.5));
         hand.root.scale.setScalar(shrink);
         if (hand.phaseTimer >= 0.4) {
           hand.root.visible = false;
