@@ -247,6 +247,7 @@ export class RagdollRacer {
 
     const isTaekwondo = mapTheme === 'TAEKWONDO';
     const isDinosaur = mapTheme === 'DINOSAUR';
+    const isPool = mapTheme === 'POOL';
     const skinColor = new THREE.Color('#fde047'); // Classic Roblox yellow head/hands
     const torsoMat = new THREE.MeshStandardMaterial({
       color: isTaekwondo ? new THREE.Color('#f8fafc') : new THREE.Color(this.color),
@@ -304,6 +305,30 @@ export class RagdollRacer {
       this.buildKartVehicleOnTorso();
     }
 
+    if (isPool) {
+      // 수영장 맵: 허리에 두른 알록달록 물놀이 튜브
+      const tubeMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(this.color),
+        roughness: 0.32,
+        metalness: 0.08,
+        emissive: new THREE.Color(this.color),
+        emissiveIntensity: 0.12,
+      });
+      const tube = new THREE.Mesh(new THREE.TorusGeometry(0.64, 0.17, 10, 22), tubeMat);
+      tube.rotation.x = Math.PI / 2;
+      tube.position.set(0, -0.06, 0);
+      tube.castShadow = true;
+      this.torsoMesh.add(tube);
+
+      const tubeStripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 });
+      for (let s = 0; s < 4; s++) {
+        const a = (s * Math.PI) / 2 + Math.PI / 4;
+        const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.4, 0.2), tubeStripeMat);
+        stripe.position.set(Math.cos(a) * 0.64, 0.02, Math.sin(a) * 0.64);
+        this.torsoMesh.add(stripe);
+      }
+    }
+
     // Head mesh (6 materials so +Z front has face)
     const headMats = [skinMat, skinMat, skinMat, skinMat, faceMat, skinMat];
     this.headMesh = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.54, 0.54), headMats);
@@ -331,6 +356,38 @@ export class RagdollRacer {
       );
       hatRibbon.position.set(0, 0.33, 0);
       this.headMesh.add(hatBrim, hatCrown, hatRibbon);
+    } else if (isPool) {
+      // 수영 모자 + 물안경
+      const capMat = new THREE.MeshStandardMaterial({
+        color: new THREE.Color(this.color),
+        roughness: 0.28,
+        metalness: 0.06,
+      });
+      const cap = new THREE.Mesh(
+        new THREE.SphereGeometry(0.29, 16, 10, 0, Math.PI * 2, 0, Math.PI * 0.5),
+        capMat
+      );
+      cap.position.y = 0.06;
+      cap.scale.set(1.02, 0.85, 1.02);
+      this.headMesh.add(cap);
+
+      const strapMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.4 });
+      const strap = new THREE.Mesh(new THREE.BoxGeometry(0.58, 0.1, 0.58), strapMat);
+      strap.position.y = 0.02;
+      this.headMesh.add(strap);
+
+      const lensMat = new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        roughness: 0.1,
+        metalness: 0.35,
+        transparent: true,
+        opacity: 0.9,
+      });
+      for (const side of [-1, 1]) {
+        const lens = new THREE.Mesh(new THREE.BoxGeometry(0.19, 0.13, 0.05), lensMat);
+        lens.position.set(side * 0.14, 0.04, 0.28);
+        this.headMesh.add(lens);
+      }
     }
 
     // Arms & Legs meshes

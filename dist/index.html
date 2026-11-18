@@ -17,11 +17,21 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700;800&family=Plus+Jakarta+Sans:wght@600;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@700;800&family=Plus+Jakarta+Sans:wght@600;700;800&family=Jua&display=swap"
       rel="stylesheet"
     />
-    <script type="module" crossorigin src="./assets/index-Dv0jTjGl.js"></script>
-    <link rel="stylesheet" crossorigin href="./assets/index-Bne4GuQe.css">
+    <script>
+      // 폴가이즈 UI 테마를 새로고침 후에도 유지 (첫 화면부터 바로 적용)
+      try {
+        if (localStorage.getItem('marble-ui-theme') === 'fallguys') {
+          document.addEventListener('DOMContentLoaded', function () {
+            document.body.classList.add('theme-fallguys');
+          });
+        }
+      } catch (e) {}
+    </script>
+    <script type="module" crossorigin src="./assets/index-Ue4WaDfo.js"></script>
+    <link rel="stylesheet" crossorigin href="./assets/index-3MzvmkTM.css">
   </head>
   <body>
     <div id="app">
@@ -39,7 +49,7 @@
             type="button"
             class="stage-pill map-switch-pill"
             id="btn-quick-map-toggle"
-            title="클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글)"
+            title="클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글 → 수영장)"
           >
             🗺️ 맵1: 🏫 운동장
           </button>
@@ -88,6 +98,13 @@
         <button id="btn-sound-toggle" class="pill-btn" title="효과음 켜기/끄기">
           🔊
         </button>
+        <button
+          id="btn-ui-theme-toggle"
+          class="pill-btn ui-theme-pill"
+          title="클릭하면 폴가이즈 스타일 테마로 바뀝니다"
+        >
+          🎨 UI: 기본
+        </button>
       </div>
 
       <!-- Left Crisp Pill Leaderboard (IMG_2317 style) -->
@@ -126,6 +143,21 @@
             </button>
             <button type="button" class="map-btn" data-map="DINOSAUR">
               🏎️🦖 맵3: 공룡 카트 탈출 (티라노·익룡똥·터보)
+            </button>
+            <button type="button" class="map-btn" data-map="POOL">
+              🏊 맵4: 수영장 (워터슬라이드·튜브·물벼락)
+            </button>
+          </div>
+        </div>
+
+        <div class="form-section">
+          <span class="field-label">🎨 UI 테마</span>
+          <div class="ui-theme-selector" role="radiogroup" aria-label="UI 테마 선택">
+            <button type="button" class="ui-theme-btn active" data-ui-theme="BASE">
+              기본 UI
+            </button>
+            <button type="button" class="ui-theme-btn" data-ui-theme="FALLGUYS">
+              🎨 폴가이즈 UI (젤리 버튼)
             </button>
           </div>
         </div>
