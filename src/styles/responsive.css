@@ -1,0 +1,135 @@
+/* Mobile Responsive Overrides */
+@media (max-width: 768px) {
+  .mobile-only-btn {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .mobile-only-flex {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 8px;
+    font-size: 0.82rem;
+    font-weight: 800;
+  }
+
+  .hide-sm {
+    display: none;
+  }
+
+  #top-right-actions {
+    top: max(10px, env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
+    justify-content: space-between;
+    gap: 8px;
+  }
+
+  .pill-btn {
+    padding: 7px 10px;
+    font-size: 0.75rem;
+  }
+
+  #top-stage-bar {
+    top: calc(max(10px, env(safe-area-inset-top)) + 50px);
+    width: calc(100vw - 24px);
+    gap: 9px;
+  }
+
+  .stage-pills-row {
+    gap: 8px;
+  }
+
+  .stage-pill {
+    padding: 5px 11px;
+    font-size: 0.75rem;
+  }
+
+  .map-pill-icon {
+    width: 16px;
+    height: 16px;
+  }
+
+  #leaderboard-panel {
+    top: calc(max(10px, env(safe-area-inset-top)) + 124px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100dvh - 256px);
+    background: rgba(255, 255, 255, 0.95);
+    border: 2.5px solid var(--border-ink);
+    border-radius: 16px;
+    padding: 14px;
+    transition: transform 0.22s ease, opacity 0.2s ease;
+  }
+
+  #leaderboard-panel.mobile-collapsed {
+    transform: translateY(16px);
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #setup-panel {
+    top: calc(max(10px, env(safe-area-inset-top)) + 56px);
+    left: 12px;
+    right: 12px;
+    width: auto;
+    max-height: calc(100dvh - 196px);
+    gap: 17px;
+  }
+
+  #setup-panel.collapsed {
+    transform: translateY(16px);
+  }
+
+  #participants-input,
+  .nth-row input {
+    font-size: 16px;
+  }
+
+  #prank-bar {
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 64px);
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+    padding: 6px 8px 9px;
+    gap: 6px;
+  }
+
+  .prank-pill {
+    padding: 6px 4px;
+    font-size: 0.69rem;
+    flex: 1;
+    text-align: center;
+  }
+
+  #camera-dock {
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
+    transform: none;
+    justify-content: space-between;
+    padding: 6px 8px 9px;
+    gap: 6px;
+  }
+
+  .cam-pill {
+    padding: 7px 6px;
+    font-size: 0.72rem;
+    flex: 1;
+    text-align: center;
+  }
+
+  .slowmo-banner {
+    top: calc(max(10px, env(safe-area-inset-top)) + 124px);
+    font-size: 0.72rem;
+  }
+
+  .flick-banner {
+    top: calc(max(10px, env(safe-area-inset-top)) + 158px);
+    font-size: 0.76rem;
+    padding: 5px 12px;
+  }
+}

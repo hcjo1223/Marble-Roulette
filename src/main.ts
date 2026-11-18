@@ -1,13 +1,11 @@
 import './style.css';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import confetti from 'canvas-confetti';
 import type {
   CameraMode,
   FlickMode,
   MapTheme,
   ObstacleDensity,
-  ParticipantEntry,
   WinningRule,
 } from './types';
 import { SoundManager } from './audio/SoundManager';
@@ -15,29 +13,28 @@ import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
 import { ObstacleCourse } from './world/ObstacleCourse';
 import { CameraDirector } from './camera/CameraDirector';
-
-const PALETTE = [
-  { main: '#ef4444', accent: '#b91c1c' },
-  { main: '#3b82f6', accent: '#1d4ed8' },
-  { main: '#22c55e', accent: '#15803d' },
-  { main: '#f59e0b', accent: '#b45309' },
-  { main: '#06b6d4', accent: '#0e7490' },
-  { main: '#ec4899', accent: '#be185d' },
-  { main: '#a855f7', accent: '#7e22ce' },
-  { main: '#f97316', accent: '#c2410c' },
-  { main: '#14b8a6', accent: '#0f766e' },
-  { main: '#eab308', accent: '#a16207' },
-  { main: '#6366f1', accent: '#4338ca' },
-  { main: '#f43f5e', accent: '#be123c' },
-];
-
-const PRESETS: Record<string, string> = {
-  class20: Array.from({ length: 20 }, (_, i) => `${i + 1}번`).join(', '),
-  coffee:
-    '김팀장, 이선임, 박대리, 최사원, 정과장, 강매니저, 조디자이너, 윤개발, 장기획, 한마케터',
-  weighted: '김부장*4, 박차장*3, 이과장*2, 최대리*2, 정사원*1, 막내인턴*1',
-  mass: Array.from({ length: 28 }, (_, i) => `${i + 1}번`).join(', '),
-};
+import {
+  PRESETS,
+  applySkyTheme,
+  getFinishFlickBannerMessage,
+  getManualFlickBusyMessage,
+  getNextFlickMode,
+  getNextMapTheme,
+  parseInitialRaceOptions,
+  parseParticipantsText,
+} from './game/mapThemeConfig';
+import {
+  hideHudBanner,
+  renderLeaderboardUI,
+  setSlowMoHud,
+  showHudBanner,
+  showWinnerModal,
+  syncCameraButtons,
+  syncDensityUI,
+  syncFlickModeUI,
+  syncMapThemeUI,
+  updateRuleTelemetryUI,
+} from './ui/raceHud';
 
 class RagdollDerbyGame {
   private world!: RAPIER.World;
@@ -76,57 +73,19 @@ class RagdollDerbyGame {
     return window.innerWidth <= 768;
   }
 
-  private applySkyTheme(): void {
-    if (this.mapTheme === 'TAEKWONDO') {
-      this.scene.background = new THREE.Color('#fde68a');
-      this.scene.fog = new THREE.FogExp2('#fef3c7', 0.003);
-    } else if (this.mapTheme === 'DINOSAUR') {
-      this.scene.background = new THREE.Color('#bbf7d0');
-      this.scene.fog = new THREE.FogExp2('#dcfce7', 0.0028);
-    } else if (this.mapTheme === 'POOL') {
-      this.scene.background = new THREE.Color('#b6f2ff');
-      this.scene.fog = new THREE.FogExp2('#d9fbff', 0.0026);
-    } else if (this.mapTheme === 'FALLGUYS') {
-      // 폴가이즈 맵: 화사한 하늘색과 부드러운 구름 안개
-      this.scene.background = new THREE.Color('#9fe8ff');
-      this.scene.fog = new THREE.FogExp2('#e3f9ff', 0.0022);
-    } else {
-      this.scene.background = new THREE.Color('#cce7ff');
-      this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
-    }
-  }
-
   public async init(): Promise<void> {
     await RAPIER.init();
 
     const isMobile = this.isMobileViewport();
-
-    const urlParams = new URLSearchParams(window.location.search);
-    const mapParam = urlParams.get('map')?.toUpperCase();
-    if (mapParam === 'TAEKWONDO' || mapParam === 'TAEBI') {
-      this.mapTheme = 'TAEKWONDO';
-    } else if (mapParam === 'DINOSAUR' || mapParam === 'DINO') {
-      this.mapTheme = 'DINOSAUR';
-    } else if (mapParam === 'POOL' || mapParam === 'SWIM' || mapParam === 'WATER') {
-      this.mapTheme = 'POOL';
-    } else if (mapParam === 'FALLGUYS' || mapParam === 'FALL') {
-      this.mapTheme = 'FALLGUYS';
-    }
-    const densityParam = urlParams.get('density')?.toUpperCase();
-    if (densityParam === 'LIGHT') {
-      this.obstacleDensity = 'LIGHT';
-    }
-    const flickParam = urlParams.get('flick')?.toUpperCase();
-    if (flickParam === 'OFF' || flickParam === '0') {
-      this.flickMode = 'OFF';
-    } else if (flickParam === 'CHAOS' || flickParam === '4') {
-      this.flickMode = 'CHAOS';
-    }
+    const initial = parseInitialRaceOptions(window.location.search);
+    this.mapTheme = initial.mapTheme;
+    this.obstacleDensity = initial.obstacleDensity;
+    this.flickMode = initial.flickMode;
 
     // 1. Bright Sunny Daylight Three.js Scene
     const container = document.getElementById('canvas-container')!;
     this.scene = new THREE.Scene();
-    this.applySkyTheme();
+    applySkyTheme(this.scene, this.mapTheme);
 
     const camera = new THREE.PerspectiveCamera(
       isMobile ? 66 : 56,
@@ -188,9 +147,8 @@ class RagdollDerbyGame {
     // 폴가이즈 UI는 기본 고정값: 토글 없이 항상 적용한다
     document.body.classList.add('theme-fallguys');
     this.bindUIEvents();
-    this.syncMapThemeUI();
-    this.syncDensityUI();
-    this.syncFlickModeUI();
+    syncMapThemeUI(this.mapTheme, this.flickMode);
+    syncDensityUI(this.obstacleDensity);
     this.rebuildRacersFromInput();
 
     const handleResize = () => {
@@ -207,65 +165,15 @@ class RagdollDerbyGame {
   }
 
   private showBannerMessage(msg: string, duration: number = 2.2): void {
-    const banner = document.getElementById('flick-banner');
-    const textEl = document.getElementById('flick-banner-text');
-    if (banner && textEl) {
-      textEl.textContent = msg;
-      banner.classList.remove('hidden');
-      banner.style.animation = 'none';
-      void banner.offsetWidth;
-      banner.style.animation = '';
-      this.flickBannerTimer = duration;
-    }
+    showHudBanner(msg);
+    this.flickBannerTimer = duration;
   }
 
   private bindCourseCallbacks(): void {
     this.course.onFinishFlick = (racer, flickNum, isManual) => {
-      if (this.mapTheme === 'PLAYGROUND') {
-        if (isManual) {
-          this.showBannerMessage(
-            `🏃💥 무스탕 보스 출동! [${racer.name}] 몸통 박치기로 날려버렸다!`
-          );
-        } else {
-          this.showBannerMessage(
-            `🏃💥 ${flickNum}등 [${racer.name}] 거대 캐릭터와 정면 충돌! 대역전 찬스!`
-          );
-        }
-      } else if (this.mapTheme === 'DINOSAUR') {
-        if (isManual) {
-          this.showBannerMessage(
-            `🦖💥 거대 공룡 돌진! [${racer.name}] 정면으로 날려버렸다!`
-          );
-        } else {
-          this.showBannerMessage(
-            `🦖💥 ${flickNum}등 [${racer.name}] 결승 직전 공룡 돌진! 대역전 찬스!`
-          );
-        }
-      } else if (this.mapTheme === 'POOL') {
-        if (isManual) {
-          this.showBannerMessage(`💧💥 거대 물벼락 강타! [${racer.name}] 물바다로 날아갔다!`);
-        } else {
-          this.showBannerMessage(
-            `💧💥 ${flickNum}등 [${racer.name}] 결승 직전 물벼락! 대역전 찬스!`
-          );
-        }
-      } else if (this.mapTheme === 'FALLGUYS') {
-        if (isManual) {
-          this.showBannerMessage(`🎪💥 대형 펀치 강타! [${racer.name}] 젤리빈이 데굴데굴!`);
-        } else {
-          this.showBannerMessage(
-            `🎪💥 ${flickNum}등 [${racer.name}] 결승 직전 펀치! 대역전 찬스!`
-          );
-        }
-      } else if (isManual) {
-        this.showBannerMessage(
-          `👆💥 사범님 장난 딱밤! [${racer.name}] 날아갔다!`
-        );
-      } else {
-        this.showBannerMessage(
-          `👆💥 ${flickNum}등 [${racer.name}] 거대 딱밤 맞고 날아감! 대역전 찬스!`
-        );
-      }
+      this.showBannerMessage(
+        getFinishFlickBannerMessage(this.mapTheme, racer.name, flickNum, isManual)
+      );
     };
 
     this.course.onPoolSplash = (racer, kind) => {
@@ -277,120 +185,9 @@ class RagdollDerbyGame {
     };
   }
 
-  private syncMapThemeUI(): void {
-    document.querySelectorAll<HTMLButtonElement>('.map-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.map === this.mapTheme);
-    });
-
-    const quickMapBtn = document.getElementById('btn-quick-map-toggle');
-    if (quickMapBtn) {
-      if (this.mapTheme === 'TAEKWONDO') {
-        quickMapBtn.innerHTML =
-          '<img src="./taebi-icon.jpg" alt="태비태권도" class="map-pill-icon" /><span>맵2: 태비태권도</span>';
-      } else if (this.mapTheme === 'DINOSAUR') {
-        quickMapBtn.textContent = '🏎️ 맵3: 공룡 카트';
-      } else if (this.mapTheme === 'POOL') {
-        quickMapBtn.textContent = '🏊 맵4: 수영장';
-      } else if (this.mapTheme === 'FALLGUYS') {
-        quickMapBtn.textContent = '🎪 맵5: 폴가이즈';
-      } else {
-        quickMapBtn.textContent = '🗺️ 맵1: 🏫 운동장';
-      }
-      quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
-      quickMapBtn.classList.toggle('dino-active', this.mapTheme === 'DINOSAUR');
-      quickMapBtn.classList.toggle('pool-active', this.mapTheme === 'POOL');
-      quickMapBtn.classList.toggle('fg-active', this.mapTheme === 'FALLGUYS');
-      quickMapBtn.title =
-        '클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글 → 수영장 → 폴가이즈)';
-    }
-
-    const prankFlickBtn = document.getElementById('btn-prank-flick');
-    if (prankFlickBtn) {
-      if (this.mapTheme === 'PLAYGROUND') {
-        prankFlickBtn.innerHTML =
-          '<img src="./boss-character.jpg" alt="캐릭터 박치기" class="boss-pill-icon" /><span>1등 박치기!</span>';
-        prankFlickBtn.title = '현재 1등에게 거대 캐릭터 몸통 박치기 발동!';
-      } else if (this.mapTheme === 'DINOSAUR') {
-        prankFlickBtn.textContent = '🦖 1등 공룡돌진!';
-        prankFlickBtn.title = '현재 1등에게 즉시 거대 공룡 돌진 발동!';
-      } else if (this.mapTheme === 'POOL') {
-        prankFlickBtn.textContent = '💧 1등 물벼락!';
-        prankFlickBtn.title = '현재 1등에게 즉시 거대 물벼락 발동!';
-      } else if (this.mapTheme === 'FALLGUYS') {
-        prankFlickBtn.textContent = '🎪 1등 펀치!';
-        prankFlickBtn.title = '현재 1등에게 즉시 대형 펀치 발동!';
-      } else {
-        prankFlickBtn.textContent = '👆 1등 딱밤!';
-        prankFlickBtn.title = '현재 1등에게 즉시 거대 딱밤 발사!';
-      }
-    }
-
-    this.syncFlickModeUI();
-  }
-
-  private syncDensityUI(): void {
-    document.querySelectorAll<HTMLButtonElement>('.density-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.density === this.obstacleDensity);
-    });
-
-    const quickDensityBtn = document.getElementById('btn-quick-density-toggle');
-    if (quickDensityBtn) {
-      quickDensityBtn.textContent =
-        this.obstacleDensity === 'LIGHT' ? '🌿 장애물: 적음' : '🔥 장애물: 많음';
-      quickDensityBtn.classList.toggle('light-active', this.obstacleDensity === 'LIGHT');
-    }
-  }
-
-  private syncFlickModeUI(): void {
-    document.querySelectorAll<HTMLButtonElement>('.flick-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.flick === this.flickMode);
-    });
-
-    const quickFlickBtn = document.getElementById('btn-quick-flick-toggle');
-    if (quickFlickBtn) {
-      const iconHtml = '<img src="./boss-character.jpg" alt="캐릭터" class="boss-pill-icon" />';
-      const trapLabel =
-        this.mapTheme === 'PLAYGROUND'
-          ? '박치기'
-          : this.mapTheme === 'DINOSAUR'
-          ? '공룡돌진'
-          : this.mapTheme === 'POOL'
-          ? '물벼락'
-          : this.mapTheme === 'FALLGUYS'
-          ? '펀치'
-          : '딱밤';
-      const trapIcon =
-        this.mapTheme === 'DINOSAUR'
-          ? '🦖'
-          : this.mapTheme === 'POOL'
-          ? '💧'
-          : this.mapTheme === 'FALLGUYS'
-          ? '🎪'
-          : '👆';
-
-      if (this.flickMode === 'OFF') {
-        quickFlickBtn.textContent = `🚫 ${trapLabel}: 끔`;
-      } else if (this.flickMode === 'CHAOS') {
-        if (this.mapTheme === 'PLAYGROUND') {
-          quickFlickBtn.innerHTML = `${iconHtml}<span>${trapLabel}: 4명</span>`;
-        } else {
-          quickFlickBtn.textContent = `💥 ${trapLabel}: 4명`;
-        }
-      } else {
-        if (this.mapTheme === 'PLAYGROUND') {
-          quickFlickBtn.innerHTML = `${iconHtml}<span>${trapLabel}: 2명</span>`;
-        } else {
-          quickFlickBtn.textContent = `${trapIcon} ${trapLabel}: 2명`;
-        }
-      }
-      quickFlickBtn.classList.toggle('off-active', this.flickMode === 'OFF');
-      quickFlickBtn.classList.toggle('chaos-active', this.flickMode === 'CHAOS');
-    }
-  }
-
   private switchFlickMode(newMode: FlickMode): void {
     this.flickMode = newMode;
-    this.syncFlickModeUI();
+    syncFlickModeUI(this.mapTheme, newMode);
     this.course.setFlickMode(newMode);
   }
 
@@ -402,8 +199,8 @@ class RagdollDerbyGame {
     }
 
     this.mapTheme = newTheme;
-    this.applySkyTheme();
-    this.syncMapThemeUI();
+    applySkyTheme(this.scene, this.mapTheme);
+    syncMapThemeUI(this.mapTheme, this.flickMode);
 
     this.course.dispose();
     this.course = new ObstacleCourse(
@@ -425,7 +222,7 @@ class RagdollDerbyGame {
     }
 
     this.obstacleDensity = newDensity;
-    this.syncDensityUI();
+    syncDensityUI(this.obstacleDensity);
 
     this.course.dispose();
     this.course = new ObstacleCourse(
@@ -437,6 +234,14 @@ class RagdollDerbyGame {
     );
     this.bindCourseCallbacks();
     this.rebuildRacersFromInput();
+  }
+
+  private focusOnRacer(racerId: string, collapseOnMobile: boolean = false): void {
+    this.cameraDirector.focusOnRacer(racerId, syncCameraButtons);
+    if (collapseOnMobile && this.isMobileViewport()) {
+      document.getElementById('leaderboard-panel')!.classList.add('mobile-collapsed');
+    }
+    this.renderLeaderboard(false);
   }
 
   private handleCanvasTapFocus(clientX: number, clientY: number): void {
@@ -461,57 +266,13 @@ class RagdollDerbyGame {
     }
 
     if (closestRacer) {
-      this.cameraDirector.focusOnRacer(closestRacer.id, (mode) => {
-        document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
-          btn.classList.toggle('active', btn.dataset.cam === mode);
-        });
-      });
-      this.renderLeaderboardUI(false);
+      this.focusOnRacer(closestRacer.id);
     }
-  }
-
-  private parseParticipantsText(raw: string): ParticipantEntry[] {
-    const tokens = raw
-      .split(/[\n,]+/)
-      .map((s) => s.trim())
-      .filter(Boolean);
-
-    const entries: ParticipantEntry[] = [];
-    let colorIdx = 0;
-
-    for (const token of tokens) {
-      const match = token.match(/^(.+?)\*(\d+)$/);
-      const baseName = match ? match[1].trim() : token;
-      const count = match ? Math.min(20, Math.max(1, parseInt(match[2], 10))) : 1;
-      const paletteItem = PALETTE[colorIdx % PALETTE.length];
-      colorIdx++;
-
-      for (let i = 0; i < count; i++) {
-        if (entries.length >= 48) break;
-        const suffix = count > 1 ? `#${i + 1}` : '';
-        entries.push({
-          id: `racer-${entries.length}-${Math.random().toString(36).slice(2, 6)}`,
-          name: `${baseName}${suffix}`,
-          color: paletteItem.main,
-          accentColor: paletteItem.accent,
-        });
-      }
-      if (entries.length >= 48) break;
-    }
-
-    if (entries.length < 2) {
-      return [
-        { id: 'r-1', name: '1번', color: PALETTE[0].main, accentColor: PALETTE[0].accent },
-        { id: 'r-2', name: '2번', color: PALETTE[1].main, accentColor: PALETTE[1].accent },
-      ];
-    }
-
-    return entries;
   }
 
   private rebuildRacersFromInput(): void {
     const textarea = document.getElementById('participants-input') as HTMLTextAreaElement;
-    const entries = this.parseParticipantsText(textarea.value);
+    const entries = parseParticipantsText(textarea.value);
 
     for (let i = entries.length - 1; i > 0; i--) {
       const j = Math.floor(Math.random() * (i + 1));
@@ -534,7 +295,7 @@ class RagdollDerbyGame {
     this.flickBannerTimer = 0;
     this.winnerAnnounced = false;
     this.setSlowMoVisuals(false);
-    document.getElementById('flick-banner')?.classList.add('hidden');
+    hideHudBanner();
 
     document.getElementById('hud-timer')!.textContent = '0.0초';
     document.getElementById('hud-zone-badge')!.textContent = this.course.getZoneLabelAtZ(0);
@@ -568,30 +329,20 @@ class RagdollDerbyGame {
     });
 
     this.sortedRacers = [...this.racers];
-    this.updateRuleTelemetry();
-    this.renderLeaderboardUI(true);
+    this.targetRank = updateRuleTelemetryUI(this.winningRule, this.racers.length);
+    this.renderLeaderboard(true);
   }
 
-  private updateRuleTelemetry(): void {
-    const total = this.racers.length;
-    const countBadge = document.getElementById('parsed-count-badge')!;
-    const hudRule = document.getElementById('hud-win-rule')!;
-    const nthInput = document.getElementById('nth-rank-input') as HTMLInputElement;
-
-    countBadge.textContent = `${total}명 준비됨`;
-    nthInput.max = String(total);
-
-    if (this.winningRule === 'FIRST') {
-      this.targetRank = 1;
-      hudRule.textContent = '🏆 1등 당첨';
-    } else if (this.winningRule === 'LAST') {
-      this.targetRank = total;
-      hudRule.textContent = `💀 꼴찌(${total}등)`;
-    } else {
-      const requested = Math.max(1, Math.min(total, parseInt(nthInput.value, 10) || 2));
-      this.targetRank = requested;
-      hudRule.textContent = `🎯 ${requested}등 당첨`;
-    }
+  private renderLeaderboard(rebuildDOM: boolean = false): void {
+    renderLeaderboardUI(
+      this.sortedRacers,
+      this.cameraDirector.focusedRacerId,
+      this.targetRank,
+      this.course.finishZ,
+      (z) => this.course.getZoneLabelAtZ(z),
+      (racerId) => this.focusOnRacer(racerId, true),
+      rebuildDOM
+    );
   }
 
   private startRaceCountdown(): void {
@@ -725,54 +476,37 @@ class RagdollDerbyGame {
   private triggerManualFlickPrank(): void {
     const target = this.course.triggerManualLeaderFlick(this.racers);
     if (!target) {
-      this.showBannerMessage(
-        this.mapTheme === 'PLAYGROUND'
-          ? '🏃 거대 캐릭터가 출동 중이에요! 잠시만요!'
-          : this.mapTheme === 'DINOSAUR'
-          ? '🦖 거대 공룡이 출동 중이에요! 잠시만요!'
-          : this.mapTheme === 'POOL'
-          ? '💧 거대 물벼락이 준비 중이에요! 잠시만요!'
-          : this.mapTheme === 'FALLGUYS'
-          ? '🎪 대형 펀치가 출동 중이에요! 잠시만요!'
-          : '👆 딱밤 손가락이 출동 중이에요! 잠시만요!',
-        1.3
-      );
+      this.showBannerMessage(getManualFlickBusyMessage(this.mapTheme), 1.3);
     }
   }
 
   private setSlowMoVisuals(active: boolean): void {
     this.cameraDirector.isClimaxSlowMo = active;
-    document.body.classList.toggle('slowmo-active', active);
-    document.getElementById('slowmo-banner')!.classList.toggle('hidden', !active);
-    document.getElementById('btn-slowmo-toggle')!.classList.toggle('active', active);
+    setSlowMoHud(active);
   }
 
   private bindUIEvents(): void {
     const setupPanel = document.getElementById('setup-panel')!;
     const leaderboardPanel = document.getElementById('leaderboard-panel')!;
 
-    const toggleSetup = () => {
+    document.getElementById('btn-toggle-setup')!.addEventListener('click', () => {
       const willOpen = setupPanel.classList.contains('collapsed');
       setupPanel.classList.toggle('collapsed');
       if (willOpen && this.isMobileViewport()) {
         leaderboardPanel.classList.add('mobile-collapsed');
       }
-    };
+    });
+    document.getElementById('btn-close-setup')!.addEventListener('click', () => {
+      setupPanel.classList.add('collapsed');
+    });
 
-    const toggleLeaderboard = () => {
+    document.getElementById('btn-toggle-leaderboard')!.addEventListener('click', () => {
       const willOpen = leaderboardPanel.classList.contains('mobile-collapsed');
       leaderboardPanel.classList.toggle('mobile-collapsed');
       if (willOpen && this.isMobileViewport()) {
         setupPanel.classList.add('collapsed');
       }
-    };
-
-    document.getElementById('btn-toggle-setup')!.addEventListener('click', toggleSetup);
-    document.getElementById('btn-close-setup')!.addEventListener('click', () => {
-      setupPanel.classList.add('collapsed');
     });
-
-    document.getElementById('btn-toggle-leaderboard')!.addEventListener('click', toggleLeaderboard);
     document.getElementById('btn-close-leaderboard')!.addEventListener('click', () => {
       leaderboardPanel.classList.add('mobile-collapsed');
     });
@@ -782,17 +516,7 @@ class RagdollDerbyGame {
     });
 
     document.getElementById('btn-quick-map-toggle')!.addEventListener('click', () => {
-      const nextTheme: MapTheme =
-        this.mapTheme === 'PLAYGROUND'
-          ? 'TAEKWONDO'
-          : this.mapTheme === 'TAEKWONDO'
-          ? 'DINOSAUR'
-          : this.mapTheme === 'DINOSAUR'
-          ? 'POOL'
-          : this.mapTheme === 'POOL'
-          ? 'FALLGUYS'
-          : 'PLAYGROUND';
-      this.switchMapTheme(nextTheme);
+      this.switchMapTheme(getNextMapTheme(this.mapTheme));
     });
 
     document.querySelectorAll<HTMLButtonElement>('.map-btn').forEach((btn) => {
@@ -805,9 +529,7 @@ class RagdollDerbyGame {
     });
 
     document.getElementById('btn-quick-density-toggle')!.addEventListener('click', () => {
-      const nextDensity: ObstacleDensity =
-        this.obstacleDensity === 'NORMAL' ? 'LIGHT' : 'NORMAL';
-      this.switchObstacleDensity(nextDensity);
+      this.switchObstacleDensity(this.obstacleDensity === 'NORMAL' ? 'LIGHT' : 'NORMAL');
     });
 
     document.querySelectorAll<HTMLButtonElement>('.density-btn').forEach((btn) => {
@@ -820,13 +542,7 @@ class RagdollDerbyGame {
     });
 
     document.getElementById('btn-quick-flick-toggle')!.addEventListener('click', () => {
-      const nextFlick: FlickMode =
-        this.flickMode === 'DOUBLE'
-          ? 'CHAOS'
-          : this.flickMode === 'CHAOS'
-          ? 'OFF'
-          : 'DOUBLE';
-      this.switchFlickMode(nextFlick);
+      this.switchFlickMode(getNextFlickMode(this.flickMode));
     });
 
     document.querySelectorAll<HTMLButtonElement>('.flick-btn').forEach((btn) => {
@@ -862,12 +578,12 @@ class RagdollDerbyGame {
         btn.classList.add('active');
         this.winningRule = btn.dataset.rule as WinningRule;
         nthRow.classList.toggle('hidden', this.winningRule !== 'NTH');
-        this.updateRuleTelemetry();
+        this.targetRank = updateRuleTelemetryUI(this.winningRule, this.racers.length);
       });
     });
 
     document.getElementById('nth-rank-input')!.addEventListener('input', () => {
-      this.updateRuleTelemetry();
+      this.targetRank = updateRuleTelemetryUI(this.winningRule, this.racers.length);
     });
 
     document.getElementById('btn-start-race')!.addEventListener('click', () => {
@@ -909,16 +625,10 @@ class RagdollDerbyGame {
       }
     });
 
-    const updateCameraButtons = (activeMode: CameraMode) => {
-      document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
-        btn.classList.toggle('active', btn.dataset.cam === activeMode);
-      });
-    };
-
     document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
       btn.addEventListener('click', () => {
         const mode = btn.dataset.cam as CameraMode;
-        this.cameraDirector.setMode(mode, updateCameraButtons);
+        this.cameraDirector.setMode(mode, syncCameraButtons);
       });
     });
 
@@ -939,10 +649,10 @@ class RagdollDerbyGame {
       ) {
         return;
       }
-      if (e.key === '1') this.cameraDirector.setMode('LEAD', updateCameraButtons);
-      if (e.key === '2') this.cameraDirector.setMode('LAST', updateCameraButtons);
-      if (e.key === '3') this.cameraDirector.setMode('TOP', updateCameraButtons);
-      if (e.key === '4') this.cameraDirector.setMode('FREE', updateCameraButtons);
+      if (e.key === '1') this.cameraDirector.setMode('LEAD', syncCameraButtons);
+      if (e.key === '2') this.cameraDirector.setMode('LAST', syncCameraButtons);
+      if (e.key === '3') this.cameraDirector.setMode('TOP', syncCameraButtons);
+      if (e.key === '4') this.cameraDirector.setMode('FREE', syncCameraButtons);
       if (e.code === 'Space') {
         e.preventDefault();
         toggleManualSlowMo();
@@ -960,95 +670,6 @@ class RagdollDerbyGame {
     });
   }
 
-  private renderLeaderboardUI(rebuildDOM: boolean = false): void {
-    const listEl = document.getElementById('leaderboard-list')!;
-    const dotsEl = document.getElementById('minimap-dots')!;
-    const leaderboardPanel = document.getElementById('leaderboard-panel')!;
-
-    if (rebuildDOM) {
-      listEl.innerHTML = '';
-      dotsEl.innerHTML = '';
-
-      for (const r of this.sortedRacers) {
-        const item = document.createElement('div');
-        item.className = 'leader-item';
-        item.id = `leader-row-${r.id}`;
-        item.addEventListener('click', () => {
-          this.cameraDirector.focusOnRacer(r.id, (mode) => {
-            document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
-              btn.classList.toggle('active', btn.dataset.cam === mode);
-            });
-          });
-          if (this.isMobileViewport()) {
-            leaderboardPanel.classList.add('mobile-collapsed');
-          }
-          this.renderLeaderboardUI(false);
-        });
-        listEl.appendChild(item);
-
-        const dot = document.createElement('div');
-        dot.className = 'minimap-dot';
-        dot.id = `minimap-dot-${r.id}`;
-        dot.style.backgroundColor = r.color;
-        dotsEl.appendChild(dot);
-      }
-    }
-
-    this.sortedRacers.forEach((r, idx) => {
-      const rank = idx + 1;
-      r.rank = rank;
-      r.isTargetRankCandidate = rank === this.targetRank;
-
-      const rowEl = document.getElementById(`leader-row-${r.id}`);
-      if (rowEl) {
-        rowEl.style.order = String(rank);
-        rowEl.className = 'leader-item';
-        if (rank === 1) rowEl.classList.add('rank-1');
-        else if (rank === 2) rowEl.classList.add('rank-2');
-        else if (rank === 3) rowEl.classList.add('rank-3');
-        if (this.cameraDirector.focusedRacerId === r.id) rowEl.classList.add('focused');
-        if (rank === this.targetRank) rowEl.classList.add('target-winner');
-
-        let badgeHtml = '';
-        if (r.state === 'FINISHED') {
-          badgeHtml = `<span class="state-pill goal">🏁</span>`;
-        } else if (r.state === 'RAGDOLL') {
-          badgeHtml = `<span class="state-pill ragdoll">💫</span>`;
-        } else if (r.isSlowed()) {
-          badgeHtml = `<span class="state-pill ragdoll">💩</span>`;
-        } else if (r.isBoosted()) {
-          badgeHtml = `<span class="state-pill goal">⚡</span>`;
-        }
-
-        rowEl.innerHTML = `
-          <span class="leader-rank">${rank}</span>
-          <span class="leader-swatch" style="background:${r.color}"></span>
-          <span class="leader-name">${r.name}</span>
-          <span class="leader-meta">${badgeHtml}</span>
-        `;
-      }
-
-      const dotEl = document.getElementById(`minimap-dot-${r.id}`);
-      if (dotEl) {
-        const pct = Math.min(
-          97,
-          Math.max(2, (r.getPosition().z / this.course.finishZ) * 93)
-        );
-        dotEl.style.left = `${pct}%`;
-        dotEl.style.zIndex = rank === this.targetRank ? '10' : '2';
-      }
-    });
-
-    // Update Zone Badge based on leader's current track position
-    if (this.sortedRacers.length > 0) {
-      const leadZ = this.sortedRacers[0].getPosition().z;
-      const zoneEl = document.getElementById('hud-zone-badge');
-      if (zoneEl) {
-        zoneEl.textContent = this.course.getZoneLabelAtZ(leadZ);
-      }
-    }
-  }
-
   private announceWinner(winner: RagdollRacer): void {
     this.winnerAnnounced = true;
     this.autoSlowMoTimer = 0;
@@ -1058,52 +679,13 @@ class RagdollDerbyGame {
     this.cameraDirector.focusedRacerId = winner.id;
     this.sound.playFinishChime(true);
 
-    confetti({
-      particleCount: 110,
-      spread: 80,
-      origin: { y: 0.55 },
-    });
-
-    const modal = document.getElementById('winner-modal')!;
-    const badge = document.getElementById('modal-rule-badge')!;
-    const title = document.getElementById('modal-winner-name')!;
-    const desc = document.getElementById('modal-winner-desc')!;
-    const statRank = document.getElementById('modal-winner-rank')!;
-    const statTime = document.getElementById('modal-winner-time')!;
-    const statRagdolls = document.getElementById('modal-winner-ragdolls')!;
-    const rankList = document.getElementById('modal-rankings-list')!;
-
-    badge.textContent =
-      this.winningRule === 'FIRST'
-        ? '🏆 1등 우승 당첨자 발표'
-        : this.winningRule === 'LAST'
-        ? '💀 최후의 꼴찌 당첨자 발표'
-        : `🎯 목표 순위 (${this.targetRank}등) 당첨자 발표`;
-
-    title.textContent = winner.name;
-    title.style.color = winner.color;
-    desc.textContent = `총 ${winner.ragdollCount}번의 장애물 충돌과 래그돌 몸싸움을 뚫고 #${winner.finishOrder}위로 결승선을 통과했습니다!`;
-
-    statRank.textContent = `#${winner.finishOrder}위`;
-    statTime.textContent = `${(winner.finishTime || this.raceElapsed).toFixed(2)}초`;
-    statRagdolls.textContent = `💥 ${winner.ragdollCount}회`;
-
-    rankList.innerHTML = '';
-    this.sortedRacers.forEach((r, idx) => {
-      const row = document.createElement('div');
-      row.className = `modal-rank-row ${r.id === winner.id ? 'is-winner' : ''}`;
-      const statusStr =
-        r.finishOrder !== null
-          ? `${r.finishTime?.toFixed(2)}s (💥${r.ragdollCount})`
-          : `주행 중 (💥${r.ragdollCount})`;
-      row.innerHTML = `
-        <span>#${idx + 1} · ${r.name}</span>
-        <span>${statusStr}</span>
-      `;
-      rankList.appendChild(row);
-    });
-
-    modal.classList.remove('hidden');
+    showWinnerModal(
+      winner,
+      this.sortedRacers,
+      this.winningRule,
+      this.targetRank,
+      this.raceElapsed
+    );
   }
 
   private animate(now: number): void {
@@ -1141,7 +723,7 @@ class RagdollDerbyGame {
     if (this.flickBannerTimer > 0) {
       this.flickBannerTimer -= realDt;
       if (this.flickBannerTimer <= 0) {
-        document.getElementById('flick-banner')?.classList.add('hidden');
+        hideHudBanner();
       }
     }
 
@@ -1242,7 +824,7 @@ class RagdollDerbyGame {
     this.uiUpdateAccum += realDt;
     if (this.uiUpdateAccum >= 0.08) {
       this.uiUpdateAccum = 0;
-      this.renderLeaderboardUI(false);
+      this.renderLeaderboard(false);
     }
 
     this.renderer.render(this.scene, this.cameraDirector.camera);
