@@ -536,8 +536,8 @@ export class RagdollRacer {
       depthWrite: false,
       toneMapped: false,
     });
-    const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.48), facePlaneMat);
-    facePlane.position.set(0, 0.02, 0.336);
+    const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.42, 0.42), facePlaneMat);
+    facePlane.position.set(0, 0.02, 0.378);
     facePlane.renderOrder = 2;
     this.headMesh.add(facePlane);
 
