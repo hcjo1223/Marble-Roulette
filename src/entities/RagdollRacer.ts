@@ -16,6 +16,7 @@ export class RagdollRacer {
   public readonly color: string;
   public readonly accentColor: string;
   public readonly isKartMode: boolean;
+  public readonly isJellybean: boolean;
 
   public state: RacerState = 'WAITING';
   public rank: number = 1;
@@ -99,6 +100,7 @@ export class RagdollRacer {
     this.color = entry.color;
     this.accentColor = entry.accentColor;
     this.isKartMode = mapTheme === 'DINOSAUR';
+    this.isJellybean = mapTheme === 'FALLGUYS';
     this.world = world;
     this.scene = scene;
     this.rank = index + 1;
@@ -403,6 +405,11 @@ export class RagdollRacer {
     this.leftLegMesh.castShadow = true;
     this.rightLegMesh.castShadow = true;
 
+    // 폴가이즈 맵 전용: 각진 R6 파츠를 통통한 젤리빈 캐릭터로 교체 (물리 관절·충돌체는 그대로)
+    if (this.isJellybean) {
+      this.applyJellybeanSkin();
+    }
+
     // Selection ring under racer
     const ringGeo = new THREE.RingGeometry(0.55, 0.78, 24);
     ringGeo.rotateX(-Math.PI / 2);
@@ -450,12 +457,116 @@ export class RagdollRacer {
     this.syncVisuals(false);
   }
 
+  /**
+   * 폴가이즈 젤리빈 스킨: 기존 R6 박스 파츠 메쉬만 통통한 캵슐·구체로 갈아끼운다.
+   * Rapier 물리 바디/조인트/충돌체는 건드리지 않아 기존 주행·래그돌 안정성이 그대로 유지된다.
+   */
+  private applyJellybeanSkin(): void {
+    const beanMain = new THREE.Color(this.color);
+    const beanSoft = beanMain.clone().lerp(new THREE.Color('#ffffff'), 0.16);
+    const beanLimb = beanMain
+      .clone()
+      .lerp(new THREE.Color('#ffffff'), 0.1)
+      .multiplyScalar(0.98);
+
+    const beanBodyMat = new THREE.MeshPhysicalMaterial({
+      color: beanMain,
+      roughness: 0.18,
+      metalness: 0.0,
+      clearcoat: 1.0,
+      clearcoatRoughness: 0.08,
+      sheen: 0.4,
+      sheenColor: new THREE.Color('#ffffff'),
+      emissive: beanMain.clone().multiplyScalar(0.16),
+      emissiveIntensity: 0.55,
+    });
+    const beanSoftMat = new THREE.MeshPhysicalMaterial({
+      color: beanSoft,
+      roughness: 0.2,
+      metalness: 0.0,
+      clearcoat: 0.9,
+      clearcoatRoughness: 0.1,
+      emissive: beanSoft.clone().multiplyScalar(0.2),
+      emissiveIntensity: 0.6,
+    });
+    const beanLimbMat = new THREE.MeshPhysicalMaterial({
+      color: beanLimb,
+      roughness: 0.22,
+      metalness: 0.0,
+      clearcoat: 0.8,
+      clearcoatRoughness: 0.14,
+      emissive: beanLimb.clone().multiplyScalar(0.14),
+      emissiveIntensity: 0.5,
+    });
+
+    // 통통한 젤리 몸체
+    this.torsoMesh.clear();
+    this.torsoMesh.geometry.dispose();
+    this.torsoMesh.geometry = new THREE.CapsuleGeometry(0.42, 0.22, 10, 22);
+    this.torsoMesh.material = beanBodyMat;
+
+    const belly = new THREE.Mesh(new THREE.SphereGeometry(0.26, 18, 14), beanSoftMat);
+    belly.position.set(0, -0.08, 0.28);
+    belly.scale.set(1.0, 1.15, 0.5);
+    this.torsoMesh.add(belly);
+
+    const shine = new THREE.Mesh(
+      new THREE.SphereGeometry(0.075, 12, 10),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.55,
+        toneMapped: false,
+      })
+    );
+    shine.position.set(-0.17, 0.2, 0.34);
+    shine.scale.set(1.0, 1.3, 0.4);
+    this.torsoMesh.add(shine);
+
+    // 둥근 머리 + 얼굴 데칼
+    this.headMesh.clear();
+    this.headMesh.geometry.dispose();
+    this.headMesh.geometry = new THREE.SphereGeometry(0.36, 24, 20);
+    this.headMesh.material = beanBodyMat;
+    this.headMesh.scale.set(1.0, 1.04, 0.98);
+
+    const facePlaneMat = new THREE.MeshBasicMaterial({
+      map: this.faceTexture,
+      transparent: true,
+      depthWrite: false,
+      toneMapped: false,
+    });
+    const facePlane = new THREE.Mesh(new THREE.PlaneGeometry(0.48, 0.48), facePlaneMat);
+    facePlane.position.set(0, 0.02, 0.336);
+    facePlane.renderOrder = 2;
+    this.headMesh.add(facePlane);
+
+    // 짧고 통통한 팔·다리
+    const armGeo = new THREE.CapsuleGeometry(0.14, 0.4, 6, 16);
+    const legGeo = new THREE.CapsuleGeometry(0.16, 0.36, 6, 16);
+    for (const arm of [this.leftArmMesh, this.rightArmMesh]) {
+      arm.geometry.dispose();
+      arm.geometry = armGeo;
+      arm.material = beanLimbMat;
+    }
+    for (const leg of [this.leftLegMesh, this.rightLegMesh]) {
+      leg.geometry.dispose();
+      leg.geometry = legGeo;
+      leg.material = beanLimbMat;
+    }
+  }
+
   private drawFaceTexture(mode: 'NORMAL' | 'DIZZY' | 'WINNER'): void {
     if (this.currentFaceMode === mode) return;
     this.currentFaceMode = mode;
     const ctx = this.faceCtx;
-    ctx.fillStyle = '#fde047';
-    ctx.fillRect(0, 0, 128, 128);
+    if (this.isJellybean) {
+      // 젤리빈은 몸통 색이 얼굴 색이므로 배경 없이 눈·볼터치만 그린다
+      ctx.clearRect(0, 0, 128, 128);
+    } else {
+      ctx.fillStyle = '#fde047';
+      ctx.fillRect(0, 0, 128, 128);
+    }
 
     ctx.strokeStyle = '#1e293b';
     ctx.fillStyle = '#1e293b';
@@ -463,6 +574,40 @@ export class RagdollRacer {
     ctx.lineCap = 'round';
 
     if (mode === 'NORMAL') {
+      if (this.isJellybean) {
+        // 동글동글 젤리빈 눈 + 발그레 볼 + 방긋
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.ellipse(44, 56, 11.5, 14.5, 0, 0, Math.PI * 2);
+        ctx.ellipse(84, 56, 11.5, 14.5, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#22303f';
+        ctx.beginPath();
+        ctx.ellipse(45.5, 58, 6.6, 9.6, 0, 0, Math.PI * 2);
+        ctx.ellipse(85.5, 58, 6.6, 9.6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = '#ffffff';
+        ctx.beginPath();
+        ctx.arc(47.5, 53, 2.6, 0, Math.PI * 2);
+        ctx.arc(87.5, 53, 2.6, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = 'rgba(251, 113, 133, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(24, 80, 10, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(104, 80, 10, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#22303f';
+        ctx.lineWidth = 5.5;
+        ctx.beginPath();
+        ctx.arc(64, 80, 12, 0.12 * Math.PI, 0.88 * Math.PI);
+        ctx.stroke();
+        this.faceTexture.needsUpdate = true;
+        return;
+      }
       // Cute cheerful chibi eyes + rosy cheeks
       ctx.beginPath();
       ctx.arc(42, 54, 8.5, 0, Math.PI * 2);
@@ -508,6 +653,29 @@ export class RagdollRacer {
       ctx.fill();
       ctx.stroke();
     } else {
+      if (this.isJellybean) {
+        // 반짝반짝 별 눈 + 함박웃음
+        ctx.fillStyle = '#f59e0b';
+        ctx.font = '900 34px "Plus Jakarta Sans", sans-serif';
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'middle';
+        ctx.fillText('★', 44, 56);
+        ctx.fillText('★', 84, 56);
+
+        ctx.fillStyle = 'rgba(251, 113, 133, 0.55)';
+        ctx.beginPath();
+        ctx.ellipse(24, 80, 10, 6, 0, 0, Math.PI * 2);
+        ctx.ellipse(104, 80, 10, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.strokeStyle = '#22303f';
+        ctx.lineWidth = 6;
+        ctx.beginPath();
+        ctx.arc(64, 74, 18, 0.08 * Math.PI, 0.92 * Math.PI);
+        ctx.stroke();
+        this.faceTexture.needsUpdate = true;
+        return;
+      }
       // Cool sunglasses / star winner face
       ctx.fillStyle = '#0f172a';
       ctx.fillRect(24, 40, 34, 22);

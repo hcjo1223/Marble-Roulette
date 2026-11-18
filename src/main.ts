@@ -8,7 +8,6 @@ import type {
   MapTheme,
   ObstacleDensity,
   ParticipantEntry,
-  UiTheme,
   WinningRule,
 } from './types';
 import { SoundManager } from './audio/SoundManager';
@@ -56,7 +55,6 @@ class RagdollDerbyGame {
   private finishedRacers: RagdollRacer[] = [];
 
   private mapTheme: MapTheme = 'PLAYGROUND';
-  private uiTheme: UiTheme = 'BASE';
   private obstacleDensity: ObstacleDensity = 'NORMAL';
   private flickMode: FlickMode = 'DOUBLE';
   private winningRule: WinningRule = 'FIRST';
@@ -78,40 +76,6 @@ class RagdollDerbyGame {
     return window.innerWidth <= 768;
   }
 
-  private applyUiTheme(theme: UiTheme): void {
-    this.uiTheme = theme;
-    const isFallguys = theme === 'FALLGUYS';
-    document.body.classList.toggle('theme-fallguys', isFallguys);
-    try {
-      localStorage.setItem('marble-ui-theme', isFallguys ? 'fallguys' : 'base');
-    } catch {
-      /* 저장이 막힌 환경(사생활 보호 모드 등)에서는 그냥 무시 */
-    }
-
-    const headerBtn = document.getElementById('btn-ui-theme-toggle');
-    if (headerBtn) {
-      headerBtn.textContent = isFallguys ? '🎨 UI: 폴가이즈' : '🎨 UI: 기본';
-      headerBtn.classList.toggle('fallguys-active', isFallguys);
-      headerBtn.title = isFallguys
-        ? '클릭하면 기본 테마로 돌아갑니다'
-        : '클릭하면 폴가이즈 스타일 테마로 바뀝니다';
-    }
-
-    document.querySelectorAll<HTMLButtonElement>('.ui-theme-btn').forEach((btn) => {
-      btn.classList.toggle('active', btn.dataset.uiTheme === theme);
-    });
-  }
-
-  private toggleUiTheme(): void {
-    this.applyUiTheme(this.uiTheme === 'FALLGUYS' ? 'BASE' : 'FALLGUYS');
-    this.showBannerMessage(
-      this.uiTheme === 'FALLGUYS'
-        ? '🎨 폴가이즈 스타일 UI 적용!'
-        : '🎨 기본 UI로 돌아왔어요',
-      1.4
-    );
-  }
-
   private applySkyTheme(): void {
     if (this.mapTheme === 'TAEKWONDO') {
       this.scene.background = new THREE.Color('#fde68a');
@@ -122,6 +86,10 @@ class RagdollDerbyGame {
     } else if (this.mapTheme === 'POOL') {
       this.scene.background = new THREE.Color('#b6f2ff');
       this.scene.fog = new THREE.FogExp2('#d9fbff', 0.0026);
+    } else if (this.mapTheme === 'FALLGUYS') {
+      // 폴가이즈 맵: 화사한 하늘색과 부드러운 구름 안개
+      this.scene.background = new THREE.Color('#9fe8ff');
+      this.scene.fog = new THREE.FogExp2('#e3f9ff', 0.0022);
     } else {
       this.scene.background = new THREE.Color('#cce7ff');
       this.scene.fog = new THREE.FogExp2('#e0f2fe', 0.0032);
@@ -141,6 +109,8 @@ class RagdollDerbyGame {
       this.mapTheme = 'DINOSAUR';
     } else if (mapParam === 'POOL' || mapParam === 'SWIM' || mapParam === 'WATER') {
       this.mapTheme = 'POOL';
+    } else if (mapParam === 'FALLGUYS' || mapParam === 'FALL') {
+      this.mapTheme = 'FALLGUYS';
     }
     const densityParam = urlParams.get('density')?.toUpperCase();
     if (densityParam === 'LIGHT') {
@@ -215,20 +185,13 @@ class RagdollDerbyGame {
     };
 
     // 4. Bind UI Events & Spawn Initial Racers
+    // 폴가이즈 UI는 기본 고정값: 토글 없이 항상 적용한다
+    document.body.classList.add('theme-fallguys');
     this.bindUIEvents();
     this.syncMapThemeUI();
     this.syncDensityUI();
     this.syncFlickModeUI();
     this.rebuildRacersFromInput();
-
-    // 저장된 UI 테마 복원 (index.html 부트스트랩과 동일한 키)
-    let savedUiTheme: UiTheme = 'BASE';
-    try {
-      savedUiTheme = localStorage.getItem('marble-ui-theme') === 'fallguys' ? 'FALLGUYS' : 'BASE';
-    } catch {
-      savedUiTheme = 'BASE';
-    }
-    this.applyUiTheme(savedUiTheme);
 
     const handleResize = () => {
       this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
@@ -276,6 +239,14 @@ class RagdollDerbyGame {
             `💧💥 ${flickNum}등 [${racer.name}] 결승 직전 물벼락! 대역전 찬스!`
           );
         }
+      } else if (this.mapTheme === 'FALLGUYS') {
+        if (isManual) {
+          this.showBannerMessage(`🎪💥 대형 펀치 강타! [${racer.name}] 젤리빈이 데굴데굴!`);
+        } else {
+          this.showBannerMessage(
+            `🎪💥 ${flickNum}등 [${racer.name}] 결승 직전 펀치! 대역전 찬스!`
+          );
+        }
       } else if (isManual) {
         this.showBannerMessage(
           `👆💥 사범님 장난 딱밤! [${racer.name}] 날아갔다!`
@@ -310,14 +281,17 @@ class RagdollDerbyGame {
         quickMapBtn.textContent = '🏎️ 맵3: 공룡 카트';
       } else if (this.mapTheme === 'POOL') {
         quickMapBtn.textContent = '🏊 맵4: 수영장';
+      } else if (this.mapTheme === 'FALLGUYS') {
+        quickMapBtn.textContent = '🎪 맵5: 폴가이즈';
       } else {
         quickMapBtn.textContent = '🗺️ 맵1: 🏫 운동장';
       }
       quickMapBtn.classList.toggle('tkd-active', this.mapTheme === 'TAEKWONDO');
       quickMapBtn.classList.toggle('dino-active', this.mapTheme === 'DINOSAUR');
       quickMapBtn.classList.toggle('pool-active', this.mapTheme === 'POOL');
+      quickMapBtn.classList.toggle('fg-active', this.mapTheme === 'FALLGUYS');
       quickMapBtn.title =
-        '클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글 → 수영장)';
+        '클릭하여 맵 테마 변경 (운동장 → 태비태권도 → 공룡 정글 → 수영장 → 폴가이즈)';
     }
 
     const prankFlickBtn = document.getElementById('btn-prank-flick');
@@ -329,6 +303,9 @@ class RagdollDerbyGame {
       } else if (this.mapTheme === 'POOL') {
         prankFlickBtn.textContent = '💧 1등 물벼락!';
         prankFlickBtn.title = '현재 1등에게 즉시 거대 물벼락 발동!';
+      } else if (this.mapTheme === 'FALLGUYS') {
+        prankFlickBtn.textContent = '🎪 1등 펀치!';
+        prankFlickBtn.title = '현재 1등에게 즉시 대형 펀치 발동!';
       } else {
         prankFlickBtn.textContent = '👆 1등 딱밤!';
         prankFlickBtn.title = '현재 1등에게 즉시 거대 딱밤 발사!';
@@ -720,6 +697,8 @@ class RagdollDerbyGame {
       this.showBannerMessage(
         this.mapTheme === 'PLAYGROUND'
           ? '🏃 거대 캐릭터가 출동 중이에요! 잠시만요!'
+          : this.mapTheme === 'FALLGUYS'
+          ? '🎪 대형 펀치가 출동 중이에요! 잠시만요!'
           : '👆 딱밤 손가락이 출동 중이에요! 잠시만요!',
         1.3
       );
@@ -767,19 +746,6 @@ class RagdollDerbyGame {
       this.startRaceCountdown();
     });
 
-    document.getElementById('btn-ui-theme-toggle')?.addEventListener('click', () => {
-      this.toggleUiTheme();
-    });
-
-    document.querySelectorAll<HTMLButtonElement>('.ui-theme-btn').forEach((btn) => {
-      btn.addEventListener('click', () => {
-        const theme = btn.dataset.uiTheme as UiTheme | undefined;
-        if (theme && theme !== this.uiTheme) {
-          this.applyUiTheme(theme);
-        }
-      });
-    });
-
     document.getElementById('btn-quick-map-toggle')!.addEventListener('click', () => {
       const nextTheme: MapTheme =
         this.mapTheme === 'PLAYGROUND'
@@ -788,6 +754,8 @@ class RagdollDerbyGame {
           ? 'DINOSAUR'
           : this.mapTheme === 'DINOSAUR'
           ? 'POOL'
+          : this.mapTheme === 'POOL'
+          ? 'FALLGUYS'
           : 'PLAYGROUND';
       this.switchMapTheme(nextTheme);
     });

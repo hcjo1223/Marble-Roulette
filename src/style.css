@@ -148,6 +148,12 @@ body.slowmo-active #letterbox-bottom {
   color: #0e7490;
 }
 
+.map-switch-pill.fg-active {
+  background: #ffe4f1;
+  color: #be185d;
+  border-color: #f9a8d4;
+}
+
 .density-switch-pill {
   pointer-events: auto;
   background: #ffedd5;
@@ -1371,6 +1377,12 @@ body.theme-fallguys .map-switch-pill.pool-active {
   background: #ccfbff;
   color: #0e7490;
   box-shadow: 0 5px 0 #92e6f2, 0 10px 16px rgba(14, 116, 144, 0.18);
+}
+
+body.theme-fallguys .map-switch-pill.fg-active {
+  background: #ffe1f0;
+  color: #be185d;
+  box-shadow: 0 5px 0 #f8b4d6, 0 10px 16px rgba(190, 24, 93, 0.2);
 }
 
 body.theme-fallguys .density-switch-pill {
