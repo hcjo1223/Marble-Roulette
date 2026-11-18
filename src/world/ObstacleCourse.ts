@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 import RAPIER from '@dimforge/rapier3d-compat';
 import type { FlickMode, MapTheme, ObstacleDensity } from '../types';
 import {
@@ -299,6 +300,8 @@ export class ObstacleCourse {
 
   private giantFlickHands: GiantFlickHandData[] = [];
   private flickedRacerIds: Set<string> = new Set();
+  private static bossGlbTemplate: THREE.Group | null = null;
+  private static bossGlbLoadPromise: Promise<THREE.Group | null> | null = null;
   public onFinishFlick?: (
     racer: RagdollRacer,
     flickNumber: number,
@@ -1121,7 +1124,81 @@ export class ObstacleCourse {
     this.buildPlaygroundZone2MysteryAndBumpers();
     this.buildConveyorBeltsAndFans(true);
     this.buildPlaygroundZone4Pendulums();
+    this.buildPlaygroundMustangBossObstacles();
     this.buildFinishArch(false);
+  }
+
+  private buildPlaygroundMustangBossObstacles(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    const specs = isLight
+      ? [
+          { z: 41.5, ampX: 5.0, freq: 1.85, phase: 0, scale: 1.45 },
+          { z: 99.0, ampX: 4.2, freq: 2.05, phase: Math.PI, scale: 1.5 },
+        ]
+      : [
+          { z: 41.5, ampX: 5.2, freq: 2.05, phase: 0, scale: 1.45 },
+          { z: 71.2, ampX: 5.2, freq: 2.3, phase: 1.6, scale: 1.5 },
+          { z: 99.0, ampX: 4.4, freq: 2.5, phase: 3.1, scale: 1.55 },
+        ];
+
+    for (const sp of specs) {
+      this.createMustangBossObstacle(sp.z, sp.ampX, sp.freq, sp.phase, sp.scale);
+    }
+  }
+
+  private createMustangBossObstacle(
+    z: number,
+    ampX: number,
+    freq: number,
+    phase: number,
+    scale: number
+  ): void {
+    const cx = this.getTrackCenterX(z);
+    const halfW = 0.85 * scale;
+    const halfH = 1.45 * scale;
+    const halfD = 0.65 * scale;
+    const y = this.getTrackHeightAtZ(z) + 0.05;
+    const initX = cx + Math.sin(phase) * ampX;
+    const trackYaw = this.getTrackYawAtZ(z);
+
+    const built = this.createPlaygroundBossCharacter();
+    const group = built.root;
+    group.scale.setScalar(scale);
+    group.position.set(initX, y, z);
+    group.rotation.y = Math.PI + trackYaw;
+    group.userData.isMustangBoss = true;
+    group.userData.trackYaw = trackYaw;
+    group.userData.bodyPivot = built.bodyPivot;
+    group.userData.leftArmPivot = built.leftArmPivot;
+    group.userData.rightArmPivot = built.rightArmPivot;
+    group.userData.leftLegPivot = built.leftLegPivot;
+    group.userData.rightLegPivot = built.rightLegPivot;
+    this.courseGroup.add(group);
+
+    const body = this.createBody(
+      RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(initX, y + halfH, z)
+    );
+    this.world.createCollider(
+      RAPIER.ColliderDesc.cuboid(halfW, halfH, halfD)
+        .setRestitution(1.05)
+        .setCollisionGroups(this.envCollisionGroup()),
+      body
+    );
+
+    this.slidingShields.push({
+      body,
+      mesh: group,
+      baseZ: z,
+      baseY: y,
+      halfW,
+      halfH,
+      halfD,
+      ampX,
+      freq,
+      phase,
+      lastX: initX,
+      hitCooldowns: new Map(),
+    });
   }
 
   private buildPlaygroundZone1DesksAndSweepers(): void {
@@ -4049,10 +4126,78 @@ export class ObstacleCourse {
     return sprite;
   }
 
+  private static loadBossGlbTemplate(): Promise<THREE.Group | null> {
+    if (ObstacleCourse.bossGlbTemplate) {
+      return Promise.resolve(ObstacleCourse.bossGlbTemplate);
+    }
+    if (ObstacleCourse.bossGlbLoadPromise) {
+      return ObstacleCourse.bossGlbLoadPromise;
+    }
+
+    const loader = new GLTFLoader();
+    ObstacleCourse.bossGlbLoadPromise = new Promise((resolve) => {
+      loader.load(
+        './models/boss-character.glb',
+        (gltf) => {
+          const model = gltf.scene;
+          model.traverse((node) => {
+            if ((node as THREE.Mesh).isMesh) {
+              const mesh = node as THREE.Mesh;
+              mesh.castShadow = true;
+              mesh.receiveShadow = true;
+              const srcMat = (
+                Array.isArray(mesh.material) ? mesh.material[0] : mesh.material
+              ) as THREE.MeshStandardMaterial;
+              if (srcMat) {
+                if (srcMat.map) {
+                  srcMat.map.colorSpace = THREE.SRGBColorSpace;
+                }
+                mesh.material = new THREE.MeshStandardMaterial({
+                  map: srcMat.map ?? null,
+                  normalMap: srcMat.normalMap ?? null,
+                  normalScale: new THREE.Vector2(0.85, 0.85),
+                  roughnessMap: srcMat.roughnessMap ?? null,
+                  roughness: 0.58,
+                  metalness: 0.08,
+                });
+              }
+            }
+          });
+
+          model.updateMatrixWorld(true);
+          const box = new THREE.Box3().setFromObject(model);
+          const size = box.getSize(new THREE.Vector3());
+          const center = box.getCenter(new THREE.Vector3());
+
+          // Match procedural boss height (~2.95 units) with shoe soles resting at y = 0
+          const targetHeight = 2.95;
+          const scale = size.y > 0.0001 ? targetHeight / size.y : targetHeight;
+          model.scale.setScalar(scale);
+          model.position.set(
+            -center.x * scale,
+            -box.min.y * scale,
+            -center.z * scale
+          );
+
+          const template = new THREE.Group();
+          template.add(model);
+          ObstacleCourse.bossGlbTemplate = template;
+          resolve(template);
+        },
+        undefined,
+        (err) => {
+          console.warn('Failed to load boss-character.glb, using procedural fallback:', err);
+          resolve(null);
+        }
+      );
+    });
+
+    return ObstacleCourse.bossGlbLoadPromise;
+  }
+
   /**
-   * Builds the stylized 3D Boss Character modeled after IMG_0009 / boss_character_render:
-   * rounded brown bowl bangs, clear rectangular glasses, plump cheeks, and black shearling
-   * leather aviator jacket with fluffy fur collar, silver zipper, and 3-eyelet strap.
+   * Builds the 3D Mustang Boss Character using `./models/boss-character.glb`
+   * (with the procedural stylized 3D boss as an instant fallback while loading).
    * Local forward is +Z; origin (0, 0, 0) sits flush at foot soles.
    */
   private createPlaygroundBossCharacter(): {
@@ -4064,6 +4209,7 @@ export class ObstacleCourse {
     rightLegPivot: THREE.Group;
   } {
     const root = new THREE.Group();
+    const fallbackUpperGroup = new THREE.Group();
 
     const skinMat = new THREE.MeshStandardMaterial({ color: 0xffd1b8, roughness: 0.52 });
     const blushMat = new THREE.MeshStandardMaterial({
@@ -4139,23 +4285,24 @@ export class ObstacleCourse {
     // Upper body pivot at waist (y = 0.76) so shoulder-bash leans forward dynamically!
     const bodyPivot = new THREE.Group();
     bodyPivot.position.set(0, 0.76, 0);
+    bodyPivot.add(fallbackUpperGroup);
     root.add(bodyPivot);
 
     // Shearling leather aviator jacket torso
     const torso = new THREE.Mesh(new THREE.BoxGeometry(1.16, 1.04, 0.72), leatherMat);
     torso.position.set(0, 0.52, 0);
     torso.castShadow = true;
-    bodyPivot.add(torso);
+    fallbackUpperGroup.add(torso);
 
     // Fluffy shearling hem trim
     const hemFur = new THREE.Mesh(new THREE.BoxGeometry(1.22, 0.15, 0.78), furMat);
     hemFur.position.set(0, 0.06, 0);
-    bodyPivot.add(hemFur);
+    fallbackUpperGroup.add(hemFur);
 
     // Fluffy black shearling collar (left & right lapels + back roll)
     const collarBack = new THREE.Mesh(new THREE.BoxGeometry(1.02, 0.24, 0.46), furMat);
     collarBack.position.set(0, 1.04, -0.14);
-    bodyPivot.add(collarBack);
+    fallbackUpperGroup.add(collarBack);
 
     for (const side of [-1, 1]) {
       const lapel = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.3, 0.32), furMat);
@@ -4163,28 +4310,28 @@ export class ObstacleCourse {
       lapel.rotation.z = -side * 0.36;
       lapel.rotation.y = side * 0.15;
       lapel.castShadow = true;
-      bodyPivot.add(lapel);
+      fallbackUpperGroup.add(lapel);
     }
 
     // Center silver zipper & pull tab (+Z chest)
     const zipper = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.88, 0.04), silverMat);
     zipper.position.set(0, 0.48, 0.365);
-    bodyPivot.add(zipper);
+    fallbackUpperGroup.add(zipper);
 
     const zipPull = new THREE.Mesh(new THREE.BoxGeometry(0.11, 0.14, 0.05), silverMat);
     zipPull.position.set(0, 0.76, 0.38);
-    bodyPivot.add(zipPull);
+    fallbackUpperGroup.add(zipPull);
 
     // Signature collar buckle strap with 3 silver eyelets (viewer's left / character's right chest)
     const strap = new THREE.Mesh(new THREE.BoxGeometry(0.14, 0.34, 0.04), leatherMat);
     strap.position.set(-0.24, 0.72, 0.375);
     strap.rotation.z = 0.2;
-    bodyPivot.add(strap);
+    fallbackUpperGroup.add(strap);
     for (let e = 0; e < 3; e++) {
       const eyelet = new THREE.Mesh(new THREE.CylinderGeometry(0.03, 0.03, 0.05, 10), silverMat);
       eyelet.rotation.x = Math.PI * 0.5;
       eyelet.position.set(-0.26 + e * 0.02, 0.8 - e * 0.09, 0.39);
-      bodyPivot.add(eyelet);
+      fallbackUpperGroup.add(eyelet);
     }
 
     // Arms with shearling cuffs
@@ -4211,12 +4358,12 @@ export class ObstacleCourse {
 
     const leftArmPivot = buildArm(-1);
     const rightArmPivot = buildArm(1);
-    bodyPivot.add(leftArmPivot, rightArmPivot);
+    fallbackUpperGroup.add(leftArmPivot, rightArmPivot);
 
     // Chibi-proportioned head (matching boss_character_render.jpg)
     const headGroup = new THREE.Group();
     headGroup.position.set(0, 1.54, 0.02);
-    bodyPivot.add(headGroup);
+    fallbackUpperGroup.add(headGroup);
 
     const faceMesh = new THREE.Mesh(new THREE.SphereGeometry(0.62, 24, 20), skinMat);
     faceMesh.scale.set(1.06, 0.94, 0.98);
@@ -4299,6 +4446,28 @@ export class ObstacleCourse {
       temple.rotation.y = side * 0.16;
 
       glassesGroup.add(topBar, botBar, leftBar, rightBar, temple);
+    }
+
+    const applyGlbTemplate = (template: THREE.Group) => {
+      const cloned = template.clone(true);
+      leftLegPivot.visible = false;
+      rightLegPivot.visible = false;
+      fallbackUpperGroup.visible = false;
+      root.remove(leftLegPivot, rightLegPivot);
+      bodyPivot.remove(fallbackUpperGroup);
+      bodyPivot.position.set(0, 0, 0);
+      bodyPivot.add(cloned);
+      root.userData.hasGlbModel = true;
+    };
+
+    if (ObstacleCourse.bossGlbTemplate) {
+      applyGlbTemplate(ObstacleCourse.bossGlbTemplate);
+    } else {
+      ObstacleCourse.loadBossGlbTemplate().then((template) => {
+        if (template) {
+          applyGlbTemplate(template);
+        }
+      });
     }
 
     return {
@@ -4768,18 +4937,33 @@ export class ObstacleCourse {
       }
     }
 
-    // 3. Sliding Taekwondo Shields
+    // 3. Sliding Taekwondo Shields / Triceratops Chargers / Mustang Boss Obstacles
     for (const sh of this.slidingShields) {
       const cx = this.getTrackCenterX(sh.baseZ);
       const curX = cx + Math.sin(this.elapsedTime * sh.freq + sh.phase) * sh.ampX;
       const vx = curX - sh.lastX;
       sh.lastX = curX;
 
-      sh.mesh.position.set(curX, sh.baseY, sh.baseZ);
-      if (sh.mesh.userData.isCharger && Math.abs(vx) > 0.0004) {
-        sh.mesh.rotation.y = vx >= 0 ? 0 : Math.PI;
+      if (sh.mesh.userData.isMustangBoss) {
+        const walkCycle = this.elapsedTime * 7.2 + sh.phase;
+        const bounceY = Math.abs(Math.sin(walkCycle)) * 0.14;
+        const trackYaw = (sh.mesh.userData.trackYaw as number) || 0;
+        sh.mesh.position.set(curX, sh.baseY + bounceY, sh.baseZ);
+        if (Math.abs(vx) > 0.0002) {
+          sh.mesh.rotation.y = Math.PI + trackYaw - Math.sign(vx) * 0.28;
+        }
+        const bodyPivot = sh.mesh.userData.bodyPivot as THREE.Group | undefined;
+        if (bodyPivot) {
+          bodyPivot.rotation.set(0.06, 0, Math.sin(walkCycle) * 0.08);
+        }
+        sh.body.setNextKinematicTranslation({ x: curX, y: sh.baseY + sh.halfH, z: sh.baseZ });
+      } else {
+        sh.mesh.position.set(curX, sh.baseY, sh.baseZ);
+        if (sh.mesh.userData.isCharger && Math.abs(vx) > 0.0004) {
+          sh.mesh.rotation.y = vx >= 0 ? 0 : Math.PI;
+        }
+        sh.body.setNextKinematicTranslation({ x: curX, y: sh.baseY, z: sh.baseZ });
       }
-      sh.body.setNextKinematicTranslation({ x: curX, y: sh.baseY, z: sh.baseZ });
 
       for (const r of racers) {
         if (r.state === 'FINISHED') continue;
@@ -4790,21 +4974,21 @@ export class ObstacleCourse {
         if (
           Math.abs(rPos.x - curX) < sh.halfW + 0.55 &&
           Math.abs(rPos.z - sh.baseZ) < sh.halfD + 0.65 &&
-          Math.abs(rPos.y - sh.baseY) < sh.halfH + 0.8
+          Math.abs(rPos.y - sh.baseY) < sh.halfH * 2 + 0.8
         ) {
           sh.hitCooldowns.set(r.id, this.elapsedTime);
           const pushDirX = Math.sign(vx) || (rPos.x >= curX ? 1 : -1);
           r.triggerRagdoll(
             {
               x: pushDirX * 36 + (Math.random() - 0.5) * 6,
-              y: 20 + Math.random() * 8,
-              z: -12,
+              y: 22 + Math.random() * 8,
+              z: -14,
             },
             undefined,
-            1.15
+            1.2
           );
-          particles.spawnHitBurst(rPos, '#facc15', 10);
-          sound.playRagdollHit(1.15);
+          particles.spawnHitBurst(rPos, '#facc15', 12);
+          sound.playRagdollHit(1.25);
         }
       }
     }
@@ -5168,9 +5352,10 @@ export class ObstacleCourse {
 
         if (hand.isCharacterBasher) {
           const targetZ = tp.z + 1.05;
+          const runHop = Math.abs(Math.sin(hand.phaseTimer * 42)) * 0.18;
           const desiredPos = new THREE.Vector3(
             tp.x + side * 0.65,
-            this.getTrackHeightAtZ(targetZ) + 0.08,
+            this.getTrackHeightAtZ(targetZ) + 0.08 + runHop,
             targetZ
           );
           hand.root.position.lerp(desiredPos, Math.min(1, dt * 28));
@@ -5179,7 +5364,12 @@ export class ObstacleCourse {
             Math.atan2(tp.x - hand.root.position.x, tp.z - hand.root.position.z),
             0
           );
-          hand.charBodyPivot?.rotation.set(THREE.MathUtils.lerp(0.08, 0.3, windRatio), 0, 0);
+          const waddleZ = Math.sin(hand.phaseTimer * 42) * 0.14;
+          hand.charBodyPivot?.rotation.set(
+            THREE.MathUtils.lerp(0.08, 0.28, windRatio),
+            0,
+            waddleZ
+          );
           const stride = Math.sin(hand.phaseTimer * 42) * 0.85;
           if (hand.charLeftLegPivot && hand.charRightLegPivot) {
             hand.charLeftLegPivot.rotation.x = stride;
