@@ -235,6 +235,26 @@ interface LavaGeyserData {
   hitCooldowns: Map<string, number>;
 }
 
+interface PoolDropZoneData {
+  z: number;
+  halfZ: number;
+  timer: number;
+  interval: number;
+  ringMesh: THREE.Mesh;
+  warnLights: THREE.Mesh[];
+}
+
+interface PoolDropData {
+  mesh: THREE.Group;
+  x: number;
+  y: number;
+  z: number;
+  vy: number;
+  radius: number;
+  kind: 'BALLOON' | 'DUCK';
+  marker: THREE.Mesh;
+}
+
 export class ObstacleCourse {
   private world: RAPIER.World;
   private scene: THREE.Scene;
@@ -265,6 +285,9 @@ export class ObstacleCourse {
   private animatedDinoParts: AnimatedDinoPart[] = [];
   private runningTRexes: RunningTRexData[] = [];
   private fallingPoops: FallingPoopData[] = [];
+  private poolDropZones: PoolDropZoneData[] = [];
+  private poolDrops: PoolDropData[] = [];
+  private poolSplashes: { mesh: THREE.Mesh; life: number; maxLife: number }[] = [];
   private poopPuddles: PoopPuddleData[] = [];
   private turboPads: TurboPadData[] = [];
   private rollingBoulders: RollingBoulderData[] = [];
@@ -281,6 +304,7 @@ export class ObstacleCourse {
     flickNumber: number,
     isManual: boolean
   ) => void;
+  public onPoolSplash?: (racer: RagdollRacer, kind: 'BALLOON' | 'DUCK') => void;
 
   private elapsedTime: number = 0;
 
@@ -308,6 +332,8 @@ export class ObstacleCourse {
       this.buildTaekwondoCourse();
     } else if (this.mapTheme === 'DINOSAUR') {
       this.buildDinosaurCourse();
+    } else if (this.mapTheme === 'POOL') {
+      this.buildPoolCourse();
     } else {
       this.buildPlaygroundCourse();
     }
@@ -367,6 +393,11 @@ export class ObstacleCourse {
   }
 
   public getTrackHalfWidthAtZ(z: number): number {
+    // 수영장 맵은 좁아지는 병목 다리 없이 넓은 물길을 유지한다
+    if (this.mapTheme === 'POOL') {
+      return 9.0;
+    }
+
     if (this.mapTheme === 'DINOSAUR') {
       // Narrow Canyon Bridge near end of long Dinosaur Kart track (Z = 180 .. 214)
       if (z >= 180 && z < 186) {
@@ -412,6 +443,14 @@ export class ObstacleCourse {
       if (z < 180) return '💩 익룡 똥 & 화산 계곡';
       if (z < this.finishZ) return '🌋 최후의 공룡 협곡';
       return '🏆 정글 탈출 성공';
+    }
+    if (this.mapTheme === 'POOL') {
+      if (z < 42) return '🎢 워터슬라이드';
+      if (z < 66) return '🛟 튜브 범퍼 슬라럼';
+      if (z < 82) return '💧 물벼락 낙하 존';
+      if (z < 100) return '🌊 물살 컨베이어';
+      if (z < this.finishZ) return '🏄 빅웨이브 풀';
+      return '🏁 수영장 완주!';
     }
     if (z < 42) return '🏠 교실';
     if (z < 72) return '❓ 복도 관문';
@@ -593,50 +632,59 @@ export class ObstacleCourse {
     const envGroup = this.envCollisionGroup();
     const isTkd = this.mapTheme === 'TAEKWONDO';
     const isDino = this.mapTheme === 'DINOSAUR';
+    const isPool = this.mapTheme === 'POOL';
 
     const zone1Mat = new THREE.MeshStandardMaterial({
       map: isTkd
         ? this.createTaekwondoMatTexture('#2563eb', '#dc2626')
         : isDino
         ? this.createPastelTileTexture('#86efac', '#4ade80')
+        : isPool
+        ? this.createPastelTileTexture('#a5f3fc', '#67e8f9')
         : this.createWoodFloorTexture(),
-      roughness: 0.58,
-      metalness: 0.05,
+      roughness: isPool ? 0.24 : 0.58,
+      metalness: isPool ? 0.14 : 0.05,
     });
     const zone2Mat = new THREE.MeshStandardMaterial({
       map: isTkd
         ? this.createWoodFloorTexture()
         : isDino
         ? this.createPastelTileTexture('#fde68a', '#fcd34d')
+        : isPool
+        ? this.createPastelTileTexture('#99f6e4', '#5eead4')
         : this.createPastelTileTexture('#bae6fd', '#e0f2fe'),
-      roughness: 0.5,
-      metalness: 0.05,
+      roughness: isPool ? 0.24 : 0.5,
+      metalness: isPool ? 0.14 : 0.05,
     });
     const zone3Mat = new THREE.MeshStandardMaterial({
       map: isTkd
         ? this.createTaekwondoMatTexture('#1e3a8a', '#1d4ed8')
         : isDino
         ? this.createPastelTileTexture('#475569', '#334155')
+        : isPool
+        ? this.createPastelTileTexture('#bfdbfe', '#93c5fd')
         : this.createPastelTileTexture('#a5f3fc', '#cffafe'),
-      roughness: 0.45,
-      metalness: 0.05,
+      roughness: isPool ? 0.24 : 0.45,
+      metalness: isPool ? 0.14 : 0.05,
     });
     const zone4Mat = new THREE.MeshStandardMaterial({
       map: isTkd
         ? this.createTaekwondoMatTexture('#b91c1c', '#1e40af')
         : isDino
         ? this.createWoodFloorTexture()
+        : isPool
+        ? this.createCheckeredTexture('#38bdf8', '#f0fdff', 6, 14)
         : this.createAthleticTrackTexture(),
-      roughness: 0.68,
-      metalness: 0.02,
+      roughness: isPool ? 0.24 : 0.68,
+      metalness: isPool ? 0.14 : 0.02,
     });
 
     const wallMat = new THREE.MeshStandardMaterial({
-      color: isTkd ? 0xfef3c7 : isDino ? 0x57534e : 0xf8fafc,
+      color: isTkd ? 0xfef3c7 : isDino ? 0x57534e : isPool ? 0xf0fdff : 0xf8fafc,
       roughness: 0.65,
     });
     const wallCapMat = new THREE.MeshStandardMaterial({
-      color: isTkd ? 0x92400e : isDino ? 0x16a34a : 0xfbbf24,
+      color: isTkd ? 0x92400e : isDino ? 0x16a34a : isPool ? 0x22d3ee : 0xfbbf24,
       roughness: 0.4,
     });
 
@@ -702,7 +750,9 @@ export class ObstacleCourse {
         floorBody
       );
 
-      const isBridge = isDino
+      const isBridge = isPool
+        ? false
+        : isDino
         ? zMid >= 184 && zMid <= 210
         : zMid >= 103 && zMid <= 123;
       const wallCutoffZ = isDino ? 120 : 72;
@@ -738,7 +788,11 @@ export class ObstacleCourse {
         this.courseGroup.add(wallMesh);
 
         if (!isBridge) {
-          const capColor = isDino
+          const capColor = isPool
+            ? zMid >= 100
+              ? 0xf472b6
+              : null
+            : isDino
             ? zMid >= 120 && zMid < 180
               ? 0xea580c
               : zMid >= 180
@@ -809,6 +863,17 @@ export class ObstacleCourse {
             vine.position.set(decoX, decoY, decoZ);
             vine.quaternion.copy(wallQuat);
             this.courseGroup.add(vine);
+          } else if (isPool) {
+            const rope = new THREE.Mesh(
+              new THREE.BoxGeometry(0.22, 0.42, 4.0),
+              new THREE.MeshStandardMaterial({
+                color: side === -1 ? 0x0ea5e9 : 0x22d3ee,
+                roughness: 0.35,
+              })
+            );
+            rope.position.set(decoX, yMid + 0.9, decoZ);
+            rope.quaternion.copy(wallQuat);
+            this.courseGroup.add(rope);
           } else if (side === -1) {
             const board = new THREE.Mesh(
               new THREE.BoxGeometry(0.18, 1.5, 4.4),
@@ -849,7 +914,7 @@ export class ObstacleCourse {
     const groundMesh = new THREE.Mesh(
       new THREE.PlaneGeometry(groundW, groundL),
       new THREE.MeshStandardMaterial({
-        color: isTkd ? 0xfde68a : isDino ? 0x15803d : 0x4ade80,
+        color: isTkd ? 0xfde68a : isDino ? 0x15803d : isPool ? 0x0ea5e9 : 0x4ade80,
         roughness: 0.9,
       })
     );
@@ -864,6 +929,8 @@ export class ObstacleCourse {
 
     if (isDino) {
       this.buildDinosaurJungleScenery();
+    } else if (isPool) {
+      this.buildPoolScenery();
     } else {
       const trunkMat = new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.8 });
       const leafMat = new THREE.MeshStandardMaterial({
@@ -898,6 +965,12 @@ export class ObstacleCourse {
       this.addArchSign(62, '🦖 티라노가 달려온다!!', '#dc2626', '#fee2e2', '#7f1d1d');
       this.addArchSign(120, '💩 익룡 똥 폭격 & 화산 계곡', '#d97706', '#fef3c7', '#78350f');
       this.addArchSign(182, '🌋 최후의 공룡 협곡 스퍼트!', '#7c2d12', '#ffedd5', '#431407');
+    } else if (isPool) {
+      this.addArchSign(11, '🏊 수영장 스플래시 출발!', '#0891b2', '#ecfeff', '#0e7490');
+      this.addArchSign(43, '🛟 튜브 범퍼 슬라럼', '#f472b6', '#fdf2f8', '#be185d');
+      this.addArchSign(66, '💧 물벼락 낙하 존!', '#0284c7', '#e0f2fe', '#075985');
+      this.addArchSign(84, '🌊 물살 컨베이어', '#22d3ee', '#f0fdff', '#0e7490');
+      this.addArchSign(101, '🏄 빅웨이브 파도 풀!', '#a855f7', '#f5f3ff', '#6b21a8');
     } else {
       this.addArchSign(11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
       this.addArchSign(43, '❓ 미스터리 관문', '#0284c7', '#e0f2fe', '#075985');
@@ -928,6 +1001,8 @@ export class ObstacleCourse {
         ? 0xb91c1c
         : this.mapTheme === 'DINOSAUR'
         ? 0x78350f
+        : this.mapTheme === 'POOL'
+        ? 0x0891b2
         : 0x16a34a;
     const pillarMat = new THREE.MeshStandardMaterial({ color: pillarColor, roughness: 0.4 });
     for (const side of [-1, 1]) {
@@ -1009,9 +1084,10 @@ export class ObstacleCourse {
     const y = this.getTrackHeightAtZ(z);
     const isTkd = this.mapTheme === 'TAEKWONDO';
     const isDino = this.mapTheme === 'DINOSAUR';
+    const isPool = this.mapTheme === 'POOL';
     const gateTex = this.createCheckeredTexture(
-      isTkd ? '#dc2626' : isDino ? '#16a34a' : '#fbbf24',
-      isTkd ? '#2563eb' : isDino ? '#facc15' : '#ffffff',
+      isTkd ? '#dc2626' : isDino ? '#16a34a' : isPool ? '#22d3ee' : '#fbbf24',
+      isTkd ? '#2563eb' : isDino ? '#facc15' : isPool ? '#ffffff' : '#ffffff',
       12,
       2
     );
@@ -1168,6 +1244,870 @@ export class ObstacleCourse {
       false
     );
     this.createSweeper(126, 0, 5.2, 4.0, 2, 0x3b82f6);
+  }
+
+  // =====================================================================
+  // MAP 4: POOL COURSE (워터슬라이드 → 튜브 범퍼 → 물벼락 낙하 존 → 물살 컨베이어 → 빅웨이브)
+  // =====================================================================
+  private buildPoolCourse(): void {
+    this.buildPoolSlideAndTubes();
+    this.buildPoolTubeSlalom();
+    this.buildPoolDropZone(73, 7.0);
+    this.buildPoolConveyorBelts();
+    this.buildPoolBuoySlalom();
+    this.buildPoolBigWaveZone();
+    this.buildFinishArch(false);
+  }
+
+  /** 수영장 부품: 야자수·파라솔·튜브 부표·사다리로 물놀이 분위기를 만든다 */
+  private buildPoolScenery(): void {
+    const trunkMat = new THREE.MeshStandardMaterial({ color: 0x92400e, roughness: 0.9 });
+    const frondMats = [
+      new THREE.MeshStandardMaterial({ color: 0x16a34a, roughness: 0.6 }),
+      new THREE.MeshStandardMaterial({ color: 0x15803d, roughness: 0.6 }),
+      new THREE.MeshStandardMaterial({ color: 0x4ade80, roughness: 0.6 }),
+    ];
+    const whiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.5 });
+    const metalMat = new THREE.MeshStandardMaterial({ color: 0xcbd5e1, roughness: 0.35, metalness: 0.5 });
+
+    // 1. 야자수 가로수
+    for (let tz = 8; tz <= 142; tz += 11) {
+      const cx = this.getTrackCenterX(tz);
+      const ty = this.getTrackHeightAtZ(tz) - 1.15;
+      for (const side of [-1, 1]) {
+        const palm = new THREE.Group();
+        palm.position.set(
+          cx + side * (12.5 + Math.random() * 4.5),
+          ty,
+          tz + (Math.random() - 0.5) * 3.5
+        );
+        const lean = (Math.random() - 0.5) * 0.16;
+        const height = 4.6 + Math.random() * 2.2;
+
+        const trunk = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.26, 0.52, height, 8),
+          trunkMat
+        );
+        trunk.position.y = height * 0.5;
+        trunk.rotation.z = lean;
+        trunk.castShadow = true;
+        palm.add(trunk);
+
+        const crown = new THREE.Group();
+        crown.position.set(-Math.sin(lean) * height, height, 0);
+        const frondCount = 7;
+        for (let f = 0; f < frondCount; f++) {
+          const a = (f / frondCount) * Math.PI * 2 + Math.random() * 0.25;
+          const frond = new THREE.Mesh(
+            new THREE.BoxGeometry(2.4 + Math.random() * 0.9, 0.1, 0.8),
+            frondMats[f % frondMats.length]
+          );
+          frond.position.set(Math.cos(a) * 1.25, 0.05 - Math.random() * 0.1, Math.sin(a) * 1.25);
+          frond.rotation.y = -a;
+          frond.rotation.z = -0.3;
+          frond.castShadow = true;
+          crown.add(frond);
+        }
+        for (let c = 0; c < 3; c++) {
+          const coconut = new THREE.Mesh(
+            new THREE.SphereGeometry(0.26, 8, 8),
+            new THREE.MeshStandardMaterial({ color: 0x78350f, roughness: 0.7 })
+          );
+          const a = (c / 3) * Math.PI * 2;
+          coconut.position.set(Math.cos(a) * 0.42, -0.35, Math.sin(a) * 0.42);
+          crown.add(coconut);
+        }
+        palm.add(crown);
+        this.courseGroup.add(palm);
+      }
+    }
+
+    // 2. 파라솔 & 선베드 (트랙 바깥 물가)
+    const parasolColors = [0xf472b6, 0x22d3ee, 0xfde047, 0xa855f7];
+    for (let tz = 16; tz <= 136; tz += 22) {
+      const cx = this.getTrackCenterX(tz);
+      const ty = this.getTrackHeightAtZ(tz) - 2.3;
+      for (const side of [-1, 1]) {
+        const stand = new THREE.Group();
+        stand.position.set(cx + side * (11.2 + Math.random() * 2.5), ty, tz + side * 3);
+
+        const pole = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.4, 8), whiteMat);
+        pole.position.y = 1.7;
+        stand.add(pole);
+
+        const canopy = new THREE.Mesh(
+          new THREE.ConeGeometry(2.2, 0.95, 8),
+          new THREE.MeshStandardMaterial({
+            color: parasolColors[Math.floor(Math.random() * parasolColors.length)],
+            roughness: 0.45,
+          })
+        );
+        canopy.position.y = 3.45;
+        canopy.castShadow = true;
+        stand.add(canopy);
+
+        const bedMat = new THREE.MeshStandardMaterial({ color: 0xfef9c3, roughness: 0.7 });
+        const bed = new THREE.Mesh(new THREE.BoxGeometry(1.5, 0.18, 3.1), bedMat);
+        bed.position.set(side * 1.1, 0.32, 0);
+        bed.rotation.y = side * 0.2;
+        bed.castShadow = true;
+        stand.add(bed);
+
+        const pillow = new THREE.Mesh(
+          new THREE.BoxGeometry(1.2, 0.2, 0.6),
+          new THREE.MeshStandardMaterial({ color: 0x38bdf8, roughness: 0.6 })
+        );
+        pillow.position.set(side * 1.1, 0.47, -1.2);
+        stand.add(pillow);
+        this.courseGroup.add(stand);
+      }
+    }
+
+    // 3. 물 위에 떠 있는 컬러 튜브 부표
+    const floatColors = [0xf472b6, 0xfde047, 0x22d3ee, 0xa855f7, 0xfb923c, 0x4ade80];
+    for (let tz = 12; tz <= 140; tz += 6.5) {
+      const cx = this.getTrackCenterX(tz);
+      const wy = this.getTrackHeightAtZ(tz) - 2.05;
+      for (const side of [-1, 1]) {
+        if (Math.random() < 0.25) continue;
+        const ring = new THREE.Mesh(
+          new THREE.TorusGeometry(0.85 + Math.random() * 0.35, 0.28, 10, 20),
+          new THREE.MeshStandardMaterial({
+            color: floatColors[Math.floor(Math.random() * floatColors.length)],
+            roughness: 0.35,
+          })
+        );
+        ring.rotation.x = Math.PI / 2 + (Math.random() - 0.5) * 0.3;
+        ring.rotation.z = Math.random() * Math.PI;
+        ring.position.set(
+          cx + side * (10.6 + Math.random() * 7.5),
+          wy + (Math.random() - 0.5) * 0.15,
+          tz + (Math.random() - 0.5) * 3.2
+        );
+        this.courseGroup.add(ring);
+      }
+    }
+
+    // 4. 수영장 사다리 (출발 지점 옆)
+    for (const side of [-1, 1]) {
+      const ladderZ = 12.5;
+      const lcx = this.getTrackCenterX(ladderZ);
+      const ly = this.getTrackHeightAtZ(ladderZ) - 2.4;
+      const ladder = new THREE.Group();
+      ladder.position.set(lcx + side * 10.4, ly, ladderZ);
+      for (const rail of [-0.55, 0.55]) {
+        const r = new THREE.Mesh(new THREE.CylinderGeometry(0.09, 0.09, 3.6, 8), metalMat);
+        r.position.set(rail, 1.8, 0);
+        ladder.add(r);
+      }
+      for (let lr = 0; lr < 4; lr++) {
+        const rung = new THREE.Mesh(new THREE.CylinderGeometry(0.07, 0.07, 1.1, 8), metalMat);
+        rung.rotation.z = Math.PI / 2;
+        rung.position.set(0, 0.5 + lr * 0.85, 0);
+        ladder.add(rung);
+      }
+      this.courseGroup.add(ladder);
+    }
+
+    // 5. 안전요원 의자 (물벼락 존 옆)
+    const chairZ = 66;
+    const ccx = this.getTrackCenterX(chairZ);
+    const chY = this.getTrackHeightAtZ(chairZ) - 2.35;
+    const chair = new THREE.Group();
+    chair.position.set(ccx + 10.6, chY, chairZ);
+    const chairMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.5 });
+    for (const lx of [-0.6, 0.6]) {
+      for (const lz of [-0.6, 0.6]) {
+        const leg = new THREE.Mesh(new THREE.BoxGeometry(0.16, 3.0, 0.16), chairMat);
+        leg.position.set(lx * 1.2, 1.5, lz * 1.2);
+        chair.add(leg);
+      }
+    }
+    const seat = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.18, 1.7), whiteMat);
+    seat.position.y = 3.05;
+    chair.add(seat);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(1.7, 1.2, 0.18), chairMat);
+    back.position.set(0, 3.7, -0.8);
+    chair.add(back);
+    const umbrella = new THREE.Mesh(
+      new THREE.ConeGeometry(1.9, 0.8, 8),
+      new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.5 })
+    );
+    umbrella.position.y = 5.4;
+    chair.add(umbrella);
+    this.courseGroup.add(chair);
+  }
+
+  /** 도넛 튜브 범퍼 메쉬 (알록달록 물놀이 튜브) */
+  private createTubeBumperMesh(colorHex: number): THREE.Group {
+    const group = new THREE.Group();
+    const torus = new THREE.Mesh(
+      new THREE.TorusGeometry(1.12, 0.46, 12, 26),
+      new THREE.MeshStandardMaterial({ color: colorHex, roughness: 0.3 })
+    );
+    torus.rotation.x = Math.PI / 2;
+    torus.castShadow = true;
+    group.add(torus);
+
+    const stripeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 });
+    for (let s = 0; s < 4; s++) {
+      const a = (s * Math.PI) / 2 + Math.PI / 4;
+      const stripe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.62, 0.22), stripeMat);
+      stripe.position.set(Math.cos(a) * 1.12, 0.16, Math.sin(a) * 1.12);
+      group.add(stripe);
+    }
+    return group;
+  }
+
+  private addTubeBumpers(specs: { z: number; offset: number; color: number }[]): void {
+    for (const spec of specs) {
+      const cx = this.getTrackCenterX(spec.z);
+      const wx = cx + spec.offset;
+      const wy = this.getTrackHeightAtZ(spec.z) + 0.55;
+      const pos = new THREE.Vector3(wx, wy, spec.z);
+      const radius = 1.45;
+
+      const group = this.createTubeBumperMesh(spec.color);
+      group.position.copy(pos);
+      this.courseGroup.add(group);
+
+      const body = this.createBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(pos.x, pos.y, pos.z)
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(0.5, radius)
+          .setRestitution(1.15)
+          .setCollisionGroups(this.envCollisionGroup()),
+        body
+      );
+
+      this.pinballBumpers.push({
+        pos,
+        mesh: group,
+        radius,
+        pulseScale: 1.0,
+        hitCooldowns: new Map(),
+      });
+    }
+  }
+
+  private buildPoolSlideAndTubes(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+
+    // 1. 젖은 워터슬라이드 물길 (트랙 위 얇은 물막 + 측면 슬라이드 레일)
+    const wetGeo = this.createCurvedFloorStripGeometry(15, 34, -8.5, 8.5, 0.1, 10);
+    const wetMesh = new THREE.Mesh(
+      wetGeo,
+      new THREE.MeshStandardMaterial({
+        color: 0x7dd3fc,
+        transparent: true,
+        opacity: 0.42,
+        roughness: 0.1,
+        metalness: 0.35,
+        side: THREE.DoubleSide,
+        polygonOffset: true,
+        polygonOffsetFactor: -2,
+        polygonOffsetUnits: -2,
+      })
+    );
+    this.courseGroup.add(wetMesh);
+
+    for (const side of [-1, 1]) {
+      for (let z = 16; z <= 33; z += 8.5) {
+        const cx = this.getTrackCenterX(z);
+        const yaw = this.getTrackYawAtZ(z);
+        const rail = new THREE.Mesh(
+          new THREE.BoxGeometry(0.55, 1.1, 7.6),
+          new THREE.MeshStandardMaterial({ color: side === -1 ? 0x22d3ee : 0xf472b6, roughness: 0.3 })
+        );
+        rail.position.set(cx + side * 8.1, this.getTrackHeightAtZ(z) + 0.55, z);
+        rail.rotation.y = yaw;
+        rail.castShadow = true;
+        this.courseGroup.add(rail);
+      }
+    }
+
+    // 2. 워터슬라이드 타워 & 슬라이드 슈트 (트랙 왼쪽 조형물)
+    const slideZ = 25;
+    const scx = this.getTrackCenterX(slideZ) - 15.5;
+    const sy = this.getTrackHeightAtZ(slideZ) - 2.2;
+    const tower = new THREE.Group();
+    tower.position.set(scx, sy, slideZ);
+    const towerMat = new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.45 });
+    const towerBody = new THREE.Mesh(new THREE.CylinderGeometry(2.4, 3.0, 6.4, 10), towerMat);
+    towerBody.position.y = 3.2;
+    towerBody.castShadow = true;
+    tower.add(towerBody);
+    const towerTop = new THREE.Mesh(
+      new THREE.ConeGeometry(3.1, 2.0, 10),
+      new THREE.MeshStandardMaterial({ color: 0xf472b6, roughness: 0.4 })
+    );
+    towerTop.position.y = 7.2;
+    tower.add(towerTop);
+
+    const chuteMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.35 });
+    for (let i = 0; i < 5; i++) {
+      const chute = new THREE.Mesh(new THREE.TorusGeometry(2.0, 0.42, 10, 18, Math.PI), chuteMat);
+      chute.position.set(i * 1.6, 5.2 - i * 0.95, 0);
+      chute.rotation.set(0, Math.PI / 2, Math.PI * 0.55);
+      tower.add(chute);
+    }
+
+    const slidePool = new THREE.Mesh(
+      new THREE.CylinderGeometry(4.2, 4.2, 0.5, 20),
+      new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        roughness: 0.15,
+        metalness: 0.3,
+        transparent: true,
+        opacity: 0.85,
+      })
+    );
+    slidePool.position.set(6.6, 0.25, 1.4);
+    tower.add(slidePool);
+    this.courseGroup.add(tower);
+
+    // 3. 알록달록 도넛 튜브 범퍼
+    const specs = isLight
+      ? [
+          { z: 19, offset: -3.8, color: 0xf472b6 },
+          { z: 30, offset: 3.6, color: 0x22d3ee },
+        ]
+      : [
+          { z: 17, offset: -4.2, color: 0xf472b6 },
+          { z: 20, offset: 3.9, color: 0x22d3ee },
+          { z: 24, offset: -1.2, color: 0xfde047 },
+          { z: 28, offset: 4.6, color: 0xa855f7 },
+          { z: 31, offset: -4.4, color: 0xfb923c },
+          { z: 35, offset: 2.4, color: 0x4ade80 },
+        ];
+    this.addTubeBumpers(specs);
+  }
+
+  private buildPoolTubeSlalom(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    const specs = isLight
+      ? [
+          { z: 48, offset: 0, color: 0xf472b6 },
+          { z: 58, offset: 0, color: 0x22d3ee },
+        ]
+      : [
+          { z: 45, offset: -5.0, color: 0xf472b6 },
+          { z: 45, offset: 5.0, color: 0x22d3ee },
+          { z: 51, offset: -1.6, color: 0xfde047 },
+          { z: 56, offset: 3.4, color: 0xa855f7 },
+          { z: 61, offset: -3.6, color: 0xfb923c },
+          { z: 61, offset: 4.6, color: 0x4ade80 },
+        ];
+    this.addTubeBumpers(specs);
+
+    // 튜브 범퍼 사이를 메우는 수영장 레인 로프
+    for (const z of [41, 64]) {
+      const cx = this.getTrackCenterX(z);
+      const yaw = this.getTrackYawAtZ(z);
+      const rope = new THREE.Group();
+      rope.position.set(cx, this.getTrackHeightAtZ(z) + 0.15, z);
+      rope.rotation.y = yaw;
+      for (let i = 0; i < 8; i++) {
+        const bead = new THREE.Mesh(
+          new THREE.SphereGeometry(0.3, 8, 8),
+          new THREE.MeshStandardMaterial({
+            color: i % 2 === 0 ? 0xf472b6 : 0xffffff,
+            roughness: 0.45,
+          })
+        );
+        bead.position.set(-7.7 + i * 2.2, 0.1, 0);
+        rope.add(bead);
+      }
+      this.courseGroup.add(rope);
+    }
+  }
+
+  private buildPoolConveyorBelts(): void {
+    const beltSpecs =
+      this.obstacleDensity === 'LIGHT'
+        ? [
+            { zMin: 83, zMax: 97, sideOffsetMin: -8.0, sideOffsetMax: -1.0, speedZ: 13.0, isBoost: true },
+            { zMin: 83, zMax: 97, sideOffsetMin: 1.0, sideOffsetMax: 8.0, speedZ: 13.5, isBoost: true },
+          ]
+        : [
+            { zMin: 83, zMax: 97, sideOffsetMin: -8.2, sideOffsetMax: -3.0, speedZ: 13.5, isBoost: true },
+            { zMin: 83, zMax: 97, sideOffsetMin: -2.6, sideOffsetMax: 2.6, speedZ: -9.5, isBoost: false },
+            { zMin: 83, zMax: 97, sideOffsetMin: 3.0, sideOffsetMax: 8.2, speedZ: 14.0, isBoost: true },
+          ];
+
+    for (const cfg of beltSpecs) {
+      const zLen = cfg.zMax - cfg.zMin;
+      const tex = this.createConveyorTexture(cfg.isBoost);
+      tex.repeat.set(1, zLen * 0.45);
+
+      const stripGeo = this.createCurvedFloorStripGeometry(
+        cfg.zMin,
+        cfg.zMax,
+        cfg.sideOffsetMin,
+        cfg.sideOffsetMax,
+        0.09,
+        12
+      );
+      const mesh = new THREE.Mesh(
+        stripGeo,
+        new THREE.MeshBasicMaterial({
+          map: tex,
+          side: THREE.DoubleSide,
+          polygonOffset: true,
+          polygonOffsetFactor: -2,
+          polygonOffsetUnits: -2,
+        })
+      );
+      this.courseGroup.add(mesh);
+
+      this.conveyors.push({
+        zMin: cfg.zMin,
+        zMax: cfg.zMax,
+        sideOffsetMin: cfg.sideOffsetMin,
+        sideOffsetMax: cfg.sideOffsetMax,
+        speedZ: cfg.speedZ,
+        texture: tex,
+      });
+    }
+
+    // 물살 분사기 (양옆 물대포 연출)
+    for (const side of [-1, 1]) {
+      for (const z of [84.5, 90.5, 95.5]) {
+        const cx = this.getTrackCenterX(z);
+        const jetGroup = new THREE.Group();
+        jetGroup.position.set(cx + side * 9.9, this.getTrackHeightAtZ(z) + 0.9, z);
+        const nozzle = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.55, 0.75, 1.5, 12),
+          new THREE.MeshStandardMaterial({ color: 0x0ea5e9, roughness: 0.3 })
+        );
+        nozzle.rotation.z = Math.PI / 2;
+        nozzle.rotation.y = side * 0.35;
+        jetGroup.add(nozzle);
+
+        const sprayGeo = new THREE.ConeGeometry(1.0, 4.4, 8, 1, true);
+        const spray = new THREE.Mesh(
+          sprayGeo,
+          new THREE.MeshBasicMaterial({
+            color: 0xe0f2fe,
+            transparent: true,
+            opacity: 0.5,
+          })
+        );
+        spray.rotation.z = side * (Math.PI / 2 - 0.18);
+        spray.position.set(-side * 1.9, 0.1, 0);
+        jetGroup.add(spray);
+        this.courseGroup.add(jetGroup);
+      }
+    }
+  }
+
+  private buildPoolBuoySlalom(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+    const specs = isLight
+      ? [{ z: 90, offset: 0 }]
+      : [
+          { z: 85, offset: -6.2 },
+          { z: 89, offset: 0 },
+          { z: 93, offset: -6.2 },
+          { z: 93, offset: 6.2 },
+          { z: 96, offset: 0 },
+        ];
+
+    for (const spec of specs) {
+      const cx = this.getTrackCenterX(spec.z);
+      const wx = cx + spec.offset;
+      const wy = this.getTrackHeightAtZ(spec.z) + 0.75;
+      const pos = new THREE.Vector3(wx, wy, spec.z);
+      const radius = 0.95;
+
+      const group = new THREE.Group();
+      group.position.copy(pos);
+      const buoy = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius, radius * 0.8, 1.5, 12),
+        new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.35 })
+      );
+      buoy.castShadow = true;
+      group.add(buoy);
+      const band = new THREE.Mesh(
+        new THREE.CylinderGeometry(radius + 0.06, radius + 0.06, 0.36, 12),
+        new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
+      );
+      group.add(band);
+      this.courseGroup.add(group);
+
+      const body = this.createBody(
+        RAPIER.RigidBodyDesc.fixed().setTranslation(pos.x, pos.y, pos.z)
+      );
+      this.world.createCollider(
+        RAPIER.ColliderDesc.cylinder(0.75, radius)
+          .setRestitution(1.05)
+          .setCollisionGroups(this.envCollisionGroup()),
+        body
+      );
+
+      this.pinballBumpers.push({
+        pos,
+        mesh: group,
+        radius,
+        pulseScale: 1.0,
+        hitCooldowns: new Map(),
+      });
+    }
+  }
+
+  private buildPoolBigWaveZone(): void {
+    const isLight = this.obstacleDensity === 'LIGHT';
+
+    if (isLight) {
+      this.createSweeper(118, 0, 5.0, 3.4, 2, 0x22d3ee);
+    } else {
+      this.createSweeper(112, -1.6, 5.2, 4.0, 2, 0x22d3ee);
+      this.createSweeper(120, 1.8, 4.8, -3.6, 2, 0xf472b6);
+      this.createSweeper(127, 0, 5.6, 4.4, 3, 0x0ea5e9);
+    }
+
+    // 빅웨이브 조형물 (트랙 양옆에서 밀려오는 반투명 파도)
+    for (const side of [-1, 1]) {
+      const z = 108;
+      const cx = this.getTrackCenterX(z);
+      const wave = new THREE.Mesh(
+        new THREE.TorusGeometry(5.4, 0.75, 10, 24, Math.PI),
+        new THREE.MeshStandardMaterial({
+          color: 0x38bdf8,
+          transparent: true,
+          opacity: 0.72,
+          roughness: 0.12,
+          metalness: 0.3,
+        })
+      );
+      wave.position.set(cx + side * 8.4, this.getTrackHeightAtZ(z) + 0.3, z);
+      wave.rotation.set(0, side * 0.5, Math.PI);
+      this.courseGroup.add(wave);
+    }
+  }
+
+  /** 물벼락 낙하 존: 하늘에서 거대 물풍선/고무오리가 떨어져 맞은 레이서를 크게 날려보낸다 (중간 45~55% 지점) */
+  private buildPoolDropZone(zCenter: number, halfZ: number): void {
+    const cx = this.getTrackCenterX(zCenter);
+    const ringY = this.getTrackHeightAtZ(zCenter);
+
+    const ringGeo = new THREE.RingGeometry(6.6, 8.4, 48);
+    ringGeo.rotateX(-Math.PI / 2 + TRACK_SLOPE);
+    const ringMat = new THREE.MeshBasicMaterial({
+      color: 0x38bdf8,
+      transparent: true,
+      opacity: 0.5,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -3,
+      polygonOffsetUnits: -3,
+    });
+    const ring = new THREE.Mesh(ringGeo, ringMat);
+    ring.position.set(cx, ringY + 0.07, zCenter);
+    this.courseGroup.add(ring);
+
+    const warnLights: THREE.Mesh[] = [];
+    for (const side of [-1, 1]) {
+      for (const dz of [-halfZ + 0.6, halfZ - 0.6]) {
+        const pz = zCenter + dz;
+        const postX = this.getTrackCenterX(pz) + side * 8.9;
+        const postBaseY = this.getTrackHeightAtZ(pz);
+        const post = new THREE.Mesh(
+          new THREE.CylinderGeometry(0.11, 0.11, 3.4, 8),
+          new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 })
+        );
+        post.position.set(postX, postBaseY + 1.7, pz);
+        this.courseGroup.add(post);
+
+        const light = new THREE.Mesh(
+          new THREE.SphereGeometry(0.34, 12, 10),
+          new THREE.MeshStandardMaterial({
+            color: 0x0284c7,
+            emissive: 0x38bdf8,
+            emissiveIntensity: 1.1,
+            roughness: 0.3,
+          })
+        );
+        light.position.set(postX, postBaseY + 3.6, pz);
+        this.courseGroup.add(light);
+        warnLights.push(light);
+      }
+    }
+
+    // 낙하 지점의 바닥 표식
+    for (let i = -1; i <= 1; i++) {
+      const markZ = zCenter + i * (halfZ * 0.62);
+      const markCX = this.getTrackCenterX(markZ);
+      const markGeo = new THREE.RingGeometry(1.5, 2.1, 28);
+      markGeo.rotateX(-Math.PI / 2 + TRACK_SLOPE);
+      const mark = new THREE.Mesh(
+        markGeo,
+        new THREE.MeshBasicMaterial({
+          color: 0xf472b6,
+          transparent: true,
+          opacity: 0.6,
+          side: THREE.DoubleSide,
+        })
+      );
+      mark.position.set(markCX, this.getTrackHeightAtZ(markZ) + 0.08, markZ);
+      this.courseGroup.add(mark);
+      this.overheadBanners.push({ mat: mark.material as THREE.MeshBasicMaterial, z: markZ });
+    }
+
+    this.poolDropZones.push({
+      z: zCenter,
+      halfZ,
+      timer: 1.6,
+      interval: 1.65,
+      ringMesh: ring,
+      warnLights,
+    });
+  }
+
+  private createWaterBalloonMesh(): THREE.Group {
+    const group = new THREE.Group();
+    const balloon = new THREE.Mesh(
+      new THREE.SphereGeometry(1.15, 18, 14),
+      new THREE.MeshStandardMaterial({
+        color: 0x38bdf8,
+        transparent: true,
+        opacity: 0.82,
+        roughness: 0.1,
+        metalness: 0.15,
+        emissive: 0x0284c7,
+        emissiveIntensity: 0.22,
+      })
+    );
+    balloon.scale.set(1, 1.12, 1);
+    balloon.castShadow = true;
+    group.add(balloon);
+
+    const shine = new THREE.Mesh(
+      new THREE.SphereGeometry(0.3, 10, 8),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 })
+    );
+    shine.position.set(-0.42, 0.55, 0.78);
+    group.add(shine);
+
+    const knot = new THREE.Mesh(
+      new THREE.ConeGeometry(0.26, 0.5, 8),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 })
+    );
+    knot.position.y = -1.34;
+    knot.rotation.x = Math.PI;
+    group.add(knot);
+    return group;
+  }
+
+  private createRubberDuckMesh(): THREE.Group {
+    const group = new THREE.Group();
+    const yellowMat = new THREE.MeshStandardMaterial({ color: 0xfde047, roughness: 0.32 });
+    const bodyMesh = new THREE.Mesh(new THREE.SphereGeometry(1.05, 16, 12), yellowMat);
+    bodyMesh.scale.set(1.15, 0.9, 1.25);
+    bodyMesh.castShadow = true;
+    group.add(bodyMesh);
+
+    const head = new THREE.Mesh(new THREE.SphereGeometry(0.6, 14, 12), yellowMat);
+    head.position.set(0, 0.92, 0.62);
+    head.castShadow = true;
+    group.add(head);
+
+    const beak = new THREE.Mesh(
+      new THREE.BoxGeometry(0.46, 0.22, 0.44),
+      new THREE.MeshStandardMaterial({ color: 0xf97316, roughness: 0.4 })
+    );
+    beak.position.set(0, 0.82, 1.24);
+    group.add(beak);
+
+    const eyeMat = new THREE.MeshStandardMaterial({ color: 0x0f172a, roughness: 0.3 });
+    for (const side of [-1, 1]) {
+      const eye = new THREE.Mesh(new THREE.SphereGeometry(0.1, 8, 8), eyeMat);
+      eye.position.set(side * 0.24, 1.1, 1.06);
+      group.add(eye);
+    }
+
+    const tail = new THREE.Mesh(new THREE.ConeGeometry(0.4, 0.7, 8), yellowMat);
+    tail.position.set(0, 0.35, -1.34);
+    tail.rotation.x = -Math.PI * 0.42;
+    group.add(tail);
+    return group;
+  }
+
+  private spawnPoolDrop(
+    zone: PoolDropZoneData,
+    racers: RagdollRacer[]
+  ): void {
+    const inZone = racers.filter((r) => {
+      if (r.state === 'FINISHED') return false;
+      const p = r.getPosition();
+      return Math.abs(p.z - zone.z) <= zone.halfZ;
+    });
+    const target =
+      inZone.length > 0 && Math.random() < 0.82
+        ? inZone[Math.floor(Math.random() * inZone.length)]
+        : null;
+
+    const kind: 'BALLOON' | 'DUCK' = Math.random() < 0.55 ? 'BALLOON' : 'DUCK';
+    let dropZ: number;
+    let dropX: number;
+    if (target) {
+      const tp = target.getPosition();
+      dropZ = tp.z + 1.6 + (Math.random() - 0.5) * 1.6;
+      dropX = tp.x + (Math.random() - 0.5) * 1.4;
+    } else {
+      dropZ = zone.z + (Math.random() - 0.5) * zone.halfZ * 1.5;
+      dropX =
+        this.getTrackCenterX(dropZ) + (Math.random() - 0.5) * 12;
+    }
+    dropZ = THREE.MathUtils.clamp(dropZ, zone.z - zone.halfZ, zone.z + zone.halfZ);
+    const halfW = this.getTrackHalfWidthAtZ(dropZ);
+    const centerX = this.getTrackCenterX(dropZ);
+    dropX = THREE.MathUtils.clamp(dropX, centerX - halfW + 1.4, centerX + halfW - 1.4);
+
+    const floorY = this.getTrackHeightAtZ(dropZ);
+    const startY = floorY + 21 + Math.random() * 5;
+    const mesh = kind === 'BALLOON' ? this.createWaterBalloonMesh() : this.createRubberDuckMesh();
+    mesh.scale.setScalar(kind === 'BALLOON' ? 1 : 0.95);
+    mesh.position.set(dropX, startY, dropZ);
+    this.courseGroup.add(mesh);
+
+    // 낙하 지점 바닥 그림자 표식
+    const markerGeo = new THREE.CircleGeometry(1.6, 24);
+    markerGeo.rotateX(-Math.PI / 2 + TRACK_SLOPE);
+    const marker = new THREE.Mesh(
+      markerGeo,
+      new THREE.MeshBasicMaterial({
+        color: 0x0f172a,
+        transparent: true,
+        opacity: 0.26,
+      })
+    );
+    marker.position.set(dropX, floorY + 0.1, dropZ);
+    this.courseGroup.add(marker);
+
+    this.poolDrops.push({
+      mesh,
+      x: dropX,
+      y: startY,
+      z: dropZ,
+      vy: -6 - Math.random() * 3,
+      radius: kind === 'BALLOON' ? 2.0 : 1.85,
+      kind,
+      marker,
+    });
+  }
+
+  private spawnPoolSplash(
+    pos: THREE.Vector3,
+    color: string,
+    particles: ParticleSystem
+  ): void {
+    const geo = new THREE.RingGeometry(0.4, 1.0, 28);
+    geo.rotateX(-Math.PI / 2);
+    const mesh = new THREE.Mesh(
+      geo,
+      new THREE.MeshBasicMaterial({
+        color,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+      })
+    );
+    mesh.position.copy(pos);
+    this.courseGroup.add(mesh);
+    this.poolSplashes.push({ mesh, life: 0.62, maxLife: 0.62 });
+    particles.spawnHitBurst(pos, '#7dd3fc', 18);
+  }
+
+  private updatePoolDrops(
+    dt: number,
+    racers: RagdollRacer[],
+    particles: ParticleSystem,
+    sound: SoundManager,
+    isRacing: boolean
+  ): void {
+    // 1. 경고 링 & 경고등 점멸 + 낙하 스케줄
+    for (const zone of this.poolDropZones) {
+      const pulse = 0.5 + 0.5 * Math.sin(this.elapsedTime * 4.6);
+      const ringMat = zone.ringMesh.material as THREE.MeshBasicMaterial;
+      ringMat.opacity = 0.18 + pulse * 0.45;
+      zone.ringMesh.scale.setScalar(1 + pulse * 0.04);
+      for (const light of zone.warnLights) {
+        const lm = light.material as THREE.MeshStandardMaterial;
+        lm.emissiveIntensity = 0.3 + pulse * 1.9;
+      }
+
+      if (!isRacing) continue;
+      zone.timer -= dt;
+      if (zone.timer > 0) continue;
+      zone.timer = zone.interval * (0.8 + Math.random() * 0.5);
+      this.spawnPoolDrop(zone, racers);
+    }
+
+    // 2. 낙하하는 물풍선 / 고무오리
+    for (let i = this.poolDrops.length - 1; i >= 0; i--) {
+      const drop = this.poolDrops[i];
+      drop.vy -= 26 * dt;
+      drop.y += drop.vy * dt;
+      drop.mesh.position.set(drop.x, drop.y, drop.z);
+      drop.mesh.rotation.y += dt * 1.6;
+      drop.mesh.rotation.z = Math.sin(this.elapsedTime * 6 + i) * 0.18;
+
+      const floorY = this.getTrackHeightAtZ(drop.z);
+      const markerScale = Math.max(0.35, 1 - (drop.y - floorY) / 26);
+      drop.marker.scale.setScalar(markerScale);
+
+      if (drop.y > floorY + drop.radius * 0.9) continue;
+
+      const impact = new THREE.Vector3(drop.x, floorY + 0.35, drop.z);
+      this.courseGroup.remove(drop.mesh);
+      this.courseGroup.remove(drop.marker);
+      this.poolDrops.splice(i, 1);
+      this.spawnPoolSplash(impact, drop.kind === 'DUCK' ? '#fde047' : '#7dd3fc', particles);
+      sound.playPoopSplat();
+      sound.playRagdollHit(1.35);
+
+      if (!isRacing) continue;
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const rPos = r.getPosition();
+        if (
+          Math.hypot(rPos.x - drop.x, rPos.z - drop.z) < drop.radius + 0.95 &&
+          Math.abs(rPos.y - floorY) < 3.4
+        ) {
+          const dirX = rPos.x >= drop.x ? 1 : -1;
+          r.triggerRagdoll(
+            {
+              x: dirX * (20 + Math.random() * 10),
+              y: 26 + Math.random() * 10,
+              z: -10 - Math.random() * 6,
+            },
+            undefined,
+            1.35
+          );
+          particles.spawnHitBurst(rPos, '#38bdf8', 16);
+          this.onPoolSplash?.(r, drop.kind);
+        }
+      }
+    }
+
+    // 3. 물보라 확산 링
+    for (let i = this.poolSplashes.length - 1; i >= 0; i--) {
+      const splash = this.poolSplashes[i];
+      splash.life -= dt;
+      if (splash.life <= 0) {
+        this.courseGroup.remove(splash.mesh);
+        this.poolSplashes.splice(i, 1);
+        continue;
+      }
+      const t = 1 - splash.life / splash.maxLife;
+      splash.mesh.scale.setScalar(1 + t * 3.2);
+      (splash.mesh.material as THREE.MeshBasicMaterial).opacity = Math.max(
+        0,
+        0.95 * (1 - t)
+      );
+    }
   }
 
   // =====================================================================
@@ -2784,12 +3724,17 @@ export class ObstacleCourse {
     const ctx = canvas.getContext('2d')!;
     const isTkd = this.mapTheme === 'TAEKWONDO';
     const isDino = this.mapTheme === 'DINOSAUR';
+    const isPool = this.mapTheme === 'POOL';
     ctx.fillStyle = isBoost
-      ? isTkd
+      ? isPool
+        ? '#22d3ee'
+        : isTkd
         ? '#2563eb'
         : isDino
         ? '#ea580c'
         : '#10b981'
+      : isPool
+      ? '#0369a1'
       : isTkd
       ? '#dc2626'
       : isDino
@@ -2797,7 +3742,17 @@ export class ObstacleCourse {
       : '#f43f5e';
     ctx.fillRect(0, 0, 128, 128);
 
-    ctx.strokeStyle = isTkd ? '#fef08a' : isDino ? (isBoost ? '#fef08a' : '#fb7185') : '#ffffff';
+    ctx.strokeStyle = isPool
+      ? isBoost
+        ? '#ecfeff'
+        : '#bae6fd'
+      : isTkd
+      ? '#fef08a'
+      : isDino
+      ? isBoost
+        ? '#fef08a'
+        : '#fb7185'
+      : '#ffffff';
     ctx.lineWidth = 14;
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
@@ -2917,13 +3872,14 @@ export class ObstacleCourse {
 
   private buildFinishArch(isTkd: boolean): void {
     const isDino = this.mapTheme === 'DINOSAUR';
+    const isPool = this.mapTheme === 'POOL';
     const finishZ = this.finishZ;
     const cx = this.getTrackCenterX(finishZ);
     const yaw = this.getTrackYawAtZ(finishZ);
     const finishY = this.getTrackHeightAtZ(finishZ);
     const checkTex = this.createCheckeredTexture(
-      isTkd ? '#facc15' : isDino ? '#bef264' : '#ffffff',
-      isDino ? '#14532d' : '#0f172a',
+      isTkd ? '#facc15' : isDino ? '#bef264' : isPool ? '#22d3ee' : '#ffffff',
+      isDino ? '#14532d' : isPool ? '#0e7490' : '#0f172a',
       12,
       2
     );
@@ -2954,7 +3910,7 @@ export class ObstacleCourse {
     finishGroup.rotation.y = yaw;
 
     const archMat = new THREE.MeshStandardMaterial({
-      color: isTkd ? 0x1e293b : isDino ? 0x15803d : 0xfacc15,
+      color: isTkd ? 0x1e293b : isDino ? 0x15803d : isPool ? 0x0891b2 : 0xfacc15,
       roughness: 0.25,
     });
     for (const side of [-1, 1]) {
@@ -2994,7 +3950,7 @@ export class ObstacleCourse {
     const endWallMesh = new THREE.Mesh(
       new THREE.BoxGeometry(20.6, endWallHeight, 1.0),
       new THREE.MeshStandardMaterial({
-        color: isTkd ? 0x1e293b : isDino ? 0x14532d : 0x16a34a,
+        color: isTkd ? 0x1e293b : isDino ? 0x14532d : isPool ? 0x0e7490 : 0x16a34a,
         roughness: 0.5,
       })
     );
@@ -3016,7 +3972,7 @@ export class ObstacleCourse {
     const endWallCap = new THREE.Mesh(
       new THREE.BoxGeometry(20.8, 0.32, 1.12),
       new THREE.MeshStandardMaterial({
-        color: isTkd ? 0xdc2626 : isDino ? 0xf97316 : 0xfacc15,
+        color: isTkd ? 0xdc2626 : isDino ? 0xf97316 : isPool ? 0xf472b6 : 0xfacc15,
         roughness: 0.35,
       })
     );
@@ -3047,9 +4003,10 @@ export class ObstacleCourse {
     const ctx = canvas.getContext('2d')!;
 
     const isPlayground = this.mapTheme === 'PLAYGROUND';
-    const labelText = isPlayground ? '💥 쾅!! 박치기!' : '💥 딱밤!!';
+    const isPool = this.mapTheme === 'POOL';
+    const labelText = isPlayground ? '💥 쾅!! 박치기!' : isPool ? '💥 물벼락!!' : '💥 딱밤!!';
 
-    ctx.fillStyle = isPlayground ? '#fde047' : '#fef08a';
+    ctx.fillStyle = isPlayground ? '#fde047' : isPool ? '#a5f3fc' : '#fef08a';
     ctx.strokeStyle = '#0f172a';
     ctx.lineWidth = 8;
     ctx.beginPath();
@@ -3362,7 +4319,10 @@ export class ObstacleCourse {
       roughness: 0.18,
       metalness: 0.05,
     });
-    const cuffRedMat = new THREE.MeshStandardMaterial({ color: 0xef4444, roughness: 0.4 });
+    const cuffRedMat = new THREE.MeshStandardMaterial({
+      color: this.mapTheme === 'POOL' ? 0x22d3ee : 0xef4444,
+      roughness: 0.4,
+    });
     const cuffWhiteMat = new THREE.MeshStandardMaterial({ color: 0xf8fafc, roughness: 0.4 });
 
     for (let slotIndex = 0; slotIndex < 2; slotIndex++) {
@@ -3651,6 +4611,20 @@ export class ObstacleCourse {
       this.courseGroup.remove(fp.mesh);
     }
     this.fallingPoops = [];
+
+    // Reset Pool water-balloon drops & splash rings
+    for (const drop of this.poolDrops) {
+      this.courseGroup.remove(drop.mesh);
+      this.courseGroup.remove(drop.marker);
+    }
+    this.poolDrops = [];
+    for (const splash of this.poolSplashes) {
+      this.courseGroup.remove(splash.mesh);
+    }
+    this.poolSplashes = [];
+    for (const zone of this.poolDropZones) {
+      zone.timer = 1.6;
+    }
     for (const puddle of this.poopPuddles) {
       this.courseGroup.remove(puddle.group);
     }
@@ -4625,6 +5599,11 @@ export class ObstacleCourse {
     for (const anim of this.animatedDinoParts) {
       anim.part.rotation.x =
         anim.baseRotX + Math.sin(this.elapsedTime * anim.freq + anim.phase) * anim.amp;
+    }
+
+    // 19. Pool Map: Mid-course Water Balloon / Rubber Duck Penalty Drops
+    if (this.poolDropZones.length > 0) {
+      this.updatePoolDrops(dt, racers, particles, sound, isRacing);
     }
   }
 }

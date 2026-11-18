@@ -143,6 +143,11 @@ body.slowmo-active #letterbox-bottom {
   color: #166534;
 }
 
+.map-switch-pill.pool-active {
+  background: #cffafe;
+  color: #0e7490;
+}
+
 .density-switch-pill {
   pointer-events: auto;
   background: #ffedd5;
@@ -610,6 +615,51 @@ button:active {
   background: #dcfce7;
   color: #166534;
   border-color: #16a34a;
+}
+
+.map-btn[data-map="POOL"] {
+  grid-column: span 2;
+  background: #ecfeff;
+  color: #0e7490;
+  border-color: #67e8f9;
+}
+
+.map-btn[data-map="POOL"].active {
+  background: #a5f3fc;
+  color: #075985;
+  border-color: #0891b2;
+}
+
+.ui-theme-selector {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 6px;
+}
+
+.ui-theme-btn {
+  background: #f1f5f9;
+  color: var(--ink-muted);
+  border: 1.5px solid #cbd5e1;
+  border-radius: 8px;
+  padding: 8px 8px;
+  font-size: 0.78rem;
+  font-weight: 800;
+}
+
+.ui-theme-btn.active {
+  background: #f3e8ff;
+  color: #6b21a8;
+  border-color: #a855f7;
+}
+
+.pill-btn.ui-theme-pill {
+  background: #f5f3ff;
+  color: #6b21a8;
+}
+
+.pill-btn.ui-theme-pill.fallguys-active {
+  background: #ffe4f2;
+  color: #be185d;
 }
 
 .density-selector {
@@ -1177,5 +1227,510 @@ button:active {
     top: calc(max(8px, env(safe-area-inset-top)) + 150px);
     font-size: 0.76rem;
     padding: 5px 12px;
+  }
+}
+
+/* ==========================================================================
+   🎨 FALL GUYS UI THEME (body.theme-fallguys)
+   두꺼운 하단 그림자의 3D 젤리 버튼 · 비비드 파스텔 · 둥근 한글 웹폰트(Jua)
+   ========================================================================== */
+body.theme-fallguys {
+  --fg-ink: #2b2440;
+  --fg-pink: #ff5fa2;
+  --fg-pink-deep: #e0417f;
+  --fg-cyan: #2bdfe8;
+  --fg-cyan-deep: #10aebd;
+  --fg-lemon: #ffe14d;
+  --fg-lemon-deep: #edc512;
+  --fg-lav: #b48cff;
+  --fg-lav-deep: #8b5cf6;
+  --fg-cream: #fffafd;
+  --fg-shadow: #ecd2e2;
+
+  --border-ink: #ffffff;
+  --ink-dark: #2b2440;
+  --ink-muted: #6b6285;
+  --surface-white: rgba(255, 255, 255, 0.97);
+  --surface-soft: #fff4fa;
+  --font-sans: 'Jua', 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Pretendard',
+    sans-serif;
+
+  background: radial-gradient(circle at 12% 16%, #ffe1ef 0%, transparent 55%),
+    radial-gradient(circle at 88% 84%, #d7f8ff 0%, transparent 55%),
+    linear-gradient(160deg, #ffeaf5 0%, #e8f7ff 55%, #f4ecff 100%);
+  color: var(--fg-ink);
+}
+
+body.theme-fallguys {
+  font-family: var(--font-sans);
+}
+
+body.theme-fallguys button,
+body.theme-fallguys .stage-pill,
+body.theme-fallguys .count-badge,
+body.theme-fallguys .leader-item {
+  font-family: var(--font-sans);
+  font-weight: 400;
+  letter-spacing: 0.015em;
+}
+
+/* --- 3D 젤리 버튼 공통 --- */
+body.theme-fallguys .pill-btn,
+body.theme-fallguys .stage-pill,
+body.theme-fallguys .cam-pill,
+body.theme-fallguys .prank-pill,
+body.theme-fallguys .map-btn,
+body.theme-fallguys .density-btn,
+body.theme-fallguys .flick-btn,
+body.theme-fallguys .rule-btn,
+body.theme-fallguys .preset-btn,
+body.theme-fallguys .ui-theme-btn,
+body.theme-fallguys .leader-item,
+body.theme-fallguys .panel-close-btn {
+  border: 0;
+  border-radius: 999px;
+  background: var(--fg-cream);
+  color: var(--fg-ink);
+  box-shadow: 0 5px 0 var(--fg-shadow), 0 10px 16px rgba(129, 63, 129, 0.14);
+  transition: transform 0.09s ease, box-shadow 0.09s ease, filter 0.15s ease;
+}
+
+body.theme-fallguys .pill-btn:active,
+body.theme-fallguys .stage-pill:active,
+body.theme-fallguys .cam-pill:active,
+body.theme-fallguys .prank-pill:active,
+body.theme-fallguys .map-btn:active,
+body.theme-fallguys .density-btn:active,
+body.theme-fallguys .flick-btn:active,
+body.theme-fallguys .rule-btn:active,
+body.theme-fallguys .preset-btn:active,
+body.theme-fallguys .ui-theme-btn:active,
+body.theme-fallguys .primary-cta-btn:active,
+body.theme-fallguys .secondary-btn:active,
+body.theme-fallguys button:active {
+  transform: translateY(4px) scale(0.99);
+  box-shadow: 0 1px 0 var(--fg-shadow);
+}
+
+body.theme-fallguys .pill-btn:hover,
+body.theme-fallguys .cam-pill:hover,
+body.theme-fallguys .prank-pill:hover,
+body.theme-fallguys .preset-btn:hover,
+body.theme-fallguys .leader-item:hover {
+  filter: brightness(1.03);
+}
+
+/* --- 컬러 젤리 포인트 --- */
+body.theme-fallguys .pill-btn.primary-pill {
+  background: var(--fg-cyan);
+  box-shadow: 0 5px 0 var(--fg-cyan-deep), 0 10px 16px rgba(16, 174, 189, 0.22);
+}
+
+body.theme-fallguys .pill-btn.start-pill,
+body.theme-fallguys .primary-cta-btn {
+  background: var(--fg-lemon);
+  color: var(--fg-ink);
+  box-shadow: 0 6px 0 var(--fg-lemon-deep), 0 12px 18px rgba(237, 197, 18, 0.24);
+}
+
+body.theme-fallguys .pill-btn.ui-theme-pill {
+  background: var(--fg-lav);
+  color: #ffffff;
+  box-shadow: 0 5px 0 var(--fg-lav-deep), 0 10px 16px rgba(139, 92, 246, 0.22);
+}
+
+body.theme-fallguys .pill-btn.ui-theme-pill.fallguys-active {
+  background: var(--fg-pink);
+  box-shadow: 0 5px 0 var(--fg-pink-deep), 0 10px 16px rgba(224, 65, 127, 0.24);
+}
+
+body.theme-fallguys .pill-btn.muted {
+  opacity: 0.55;
+  filter: grayscale(0.35);
+}
+
+body.theme-fallguys .map-switch-pill {
+  background: #cdf3ff;
+  color: #0e7490;
+  box-shadow: 0 5px 0 #9ed9ef, 0 10px 16px rgba(14, 116, 144, 0.16);
+}
+
+body.theme-fallguys .map-switch-pill.tkd-active {
+  background: #ffe0e6;
+  color: #b91c4c;
+  box-shadow: 0 5px 0 #f7b8c8, 0 10px 16px rgba(185, 28, 76, 0.16);
+}
+
+body.theme-fallguys .map-switch-pill.dino-active {
+  background: #ddfbdf;
+  color: #15803d;
+  box-shadow: 0 5px 0 #aee9b6, 0 10px 16px rgba(21, 128, 61, 0.16);
+}
+
+body.theme-fallguys .map-switch-pill.pool-active {
+  background: #ccfbff;
+  color: #0e7490;
+  box-shadow: 0 5px 0 #92e6f2, 0 10px 16px rgba(14, 116, 144, 0.18);
+}
+
+body.theme-fallguys .density-switch-pill {
+  background: #fff4cf;
+  color: #9a6b00;
+  box-shadow: 0 5px 0 #f0dc9a, 0 10px 16px rgba(154, 107, 0, 0.14);
+}
+
+body.theme-fallguys .density-switch-pill.light-active {
+  background: #dcfbe8;
+  color: #15803d;
+  box-shadow: 0 5px 0 #a7ecc2, 0 10px 16px rgba(21, 128, 61, 0.14);
+}
+
+body.theme-fallguys .flick-switch-pill {
+  background: #ffe8f4;
+  color: #be185d;
+  box-shadow: 0 5px 0 #f6c6dd, 0 10px 16px rgba(190, 24, 93, 0.14);
+}
+
+body.theme-fallguys .flick-switch-pill.off-active {
+  background: #eceaf5;
+  color: #6b6285;
+}
+
+body.theme-fallguys .flick-switch-pill.chaos-active {
+  background: #ffd9e7;
+  color: #9d174d;
+  box-shadow: 0 5px 0 #f4b3cd;
+}
+
+body.theme-fallguys .rule-pill {
+  background: #fff0bf;
+  color: #8a5a00;
+}
+
+body.theme-fallguys .timer-pill {
+  background: #e8f0ff;
+  color: #1f3a8a;
+}
+
+/* --- 패널 & 카드 --- */
+body.theme-fallguys .light-card-panel {
+  background: rgba(255, 255, 255, 0.97);
+  border: 0;
+  border-radius: 26px;
+  box-shadow: 0 8px 0 #e6d4ee, 0 22px 38px rgba(107, 63, 120, 0.2);
+}
+
+body.theme-fallguys #setup-panel {
+  padding: 18px;
+}
+
+body.theme-fallguys .panel-header h2 {
+  font-size: 1.02rem;
+  font-weight: 400;
+}
+
+body.theme-fallguys .count-badge {
+  background: #e3f8ff;
+  color: #0e7490;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 3px 0 #bfe9f5;
+  font-weight: 400;
+}
+
+body.theme-fallguys .panel-close-btn {
+  width: 30px;
+  height: 30px;
+  background: var(--fg-pink);
+  color: #ffffff;
+  box-shadow: 0 4px 0 var(--fg-pink-deep);
+  font-weight: 400;
+}
+
+body.theme-fallguys .field-label {
+  font-weight: 400;
+  color: #5b4a70;
+}
+
+body.theme-fallguys .field-label code {
+  color: var(--fg-pink-deep);
+}
+
+body.theme-fallguys #participants-input,
+body.theme-fallguys .nth-row input {
+  background: #fffdfe;
+  border: 3px solid #ffe0ef;
+  border-radius: 16px;
+  color: var(--fg-ink);
+  font-family: var(--font-sans);
+  box-shadow: inset 0 2px 0 rgba(236, 210, 226, 0.6);
+}
+
+body.theme-fallguys #participants-input:focus,
+body.theme-fallguys .nth-row input:focus {
+  border-color: var(--fg-pink);
+  outline: none;
+}
+
+body.theme-fallguys .nth-row {
+  background: #fff4fa;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 3px 0 #f2d7e6;
+  font-weight: 400;
+}
+
+body.theme-fallguys .map-btn.active,
+body.theme-fallguys .density-btn.active,
+body.theme-fallguys .flick-btn.active,
+body.theme-fallguys .rule-btn.active,
+body.theme-fallguys .preset-btn:hover,
+body.theme-fallguys .ui-theme-btn.active {
+  background: var(--fg-cyan);
+  color: #073d47;
+  box-shadow: 0 5px 0 var(--fg-cyan-deep), 0 10px 16px rgba(16, 174, 189, 0.18);
+}
+
+body.theme-fallguys .map-btn[data-map="TAEKWONDO"].active {
+  background: #ffb7c8;
+  color: #8c1338;
+  box-shadow: 0 5px 0 #e3788f;
+}
+
+body.theme-fallguys .map-btn[data-map="DINOSAUR"].active {
+  background: #b5f7bd;
+  color: #14532d;
+  box-shadow: 0 5px 0 #71d283;
+}
+
+body.theme-fallguys .map-btn[data-map="POOL"],
+body.theme-fallguys .map-btn[data-map="POOL"].active {
+  background: #b8f3fb;
+  color: #084f5c;
+  box-shadow: 0 5px 0 #7fd9e6, 0 10px 16px rgba(8, 79, 92, 0.16);
+}
+
+body.theme-fallguys .ui-theme-btn.active {
+  background: var(--fg-lav);
+  color: #ffffff;
+  box-shadow: 0 5px 0 var(--fg-lav-deep), 0 10px 16px rgba(139, 92, 246, 0.2);
+}
+
+body.theme-fallguys .primary-cta-btn {
+  border-radius: 22px;
+  font-size: 1rem;
+  font-weight: 400;
+  padding: 13px 16px;
+}
+
+body.theme-fallguys .secondary-btn {
+  background: #f4efff;
+  color: #5b3fa8;
+  border: 0;
+  border-radius: 18px;
+  font-weight: 400;
+  box-shadow: 0 5px 0 #ddcbf6;
+}
+
+/* --- 순위표 --- */
+body.theme-fallguys .leader-item {
+  padding: 5px 12px;
+  font-weight: 400;
+  border-radius: 999px;
+}
+
+body.theme-fallguys .leader-item.rank-1 {
+  background: var(--fg-lemon);
+  box-shadow: 0 4px 0 var(--fg-lemon-deep);
+}
+
+body.theme-fallguys .leader-item.rank-2 {
+  background: #d9f6ff;
+  box-shadow: 0 4px 0 #a8e2f2;
+}
+
+body.theme-fallguys .leader-item.rank-3 {
+  background: #ffd8e8;
+  box-shadow: 0 4px 0 #f0afc9;
+}
+
+body.theme-fallguys .leader-item.focused {
+  box-shadow: 0 0 0 3px var(--fg-lav), 0 4px 0 var(--fg-lav-deep);
+}
+
+body.theme-fallguys .leader-item.target-winner {
+  box-shadow: 0 0 0 3px var(--fg-pink), 0 4px 0 var(--fg-pink-deep);
+}
+
+body.theme-fallguys .leaderboard-tip {
+  background: rgba(255, 255, 255, 0.9);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 3px 0 #eddcf0;
+  font-weight: 400;
+}
+
+body.theme-fallguys .leader-rank {
+  font-family: var(--font-sans);
+  font-weight: 400;
+}
+
+/* --- 하단 독 & 장난 바 --- */
+body.theme-fallguys #prank-bar,
+body.theme-fallguys #camera-dock {
+  background: rgba(255, 255, 255, 0.94);
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 7px 0 #e8d6ea, 0 16px 26px rgba(107, 63, 120, 0.18);
+}
+
+body.theme-fallguys .prank-pill.blast {
+  background: #ffd3e2;
+  color: #9d174d;
+  box-shadow: 0 4px 0 #f5aec7;
+}
+
+body.theme-fallguys .prank-pill.jump {
+  background: #cdf5ff;
+  color: #0e6b7a;
+  box-shadow: 0 4px 0 #9fe0ef;
+}
+
+body.theme-fallguys .prank-pill.whirl {
+  background: #e6dbff;
+  color: #5b21b6;
+  box-shadow: 0 4px 0 #c6b1f7;
+}
+
+body.theme-fallguys .prank-pill.flick {
+  background: #fff0a8;
+  color: #8a6100;
+  box-shadow: 0 4px 0 #ecd67c;
+}
+
+body.theme-fallguys .cam-pill {
+  background: #fbf4ff;
+  box-shadow: 0 4px 0 #e8d6ea;
+}
+
+body.theme-fallguys .cam-pill.active {
+  background: var(--fg-cyan);
+  color: #06404a;
+  box-shadow: 0 4px 0 var(--fg-cyan-deep);
+}
+
+body.theme-fallguys .cam-pill.slowmo-pill.active {
+  background: var(--fg-pink);
+  color: #ffffff;
+  box-shadow: 0 4px 0 var(--fg-pink-deep);
+}
+
+/* --- 오버레이 & 배너 --- */
+body.theme-fallguys #countdown-text {
+  color: var(--fg-lemon);
+  -webkit-text-stroke: 5px #ffffff;
+  text-shadow: 0 10px 0 var(--fg-pink-deep), 0 0 26px rgba(255, 95, 162, 0.6);
+  font-family: var(--font-sans);
+}
+
+body.theme-fallguys .slowmo-banner {
+  background: var(--fg-pink);
+  border: 3px solid #ffffff;
+  box-shadow: 0 6px 0 var(--fg-pink-deep);
+  font-weight: 400;
+}
+
+body.theme-fallguys .flick-banner {
+  background: linear-gradient(135deg, #ffe14d 0%, #ff9ac6 100%);
+  border: 3px solid #ffffff;
+  color: var(--fg-ink);
+  box-shadow: 0 6px 0 var(--fg-pink-deep);
+  font-weight: 400;
+}
+
+body.theme-fallguys .rainbow-progress-track {
+  height: 16px;
+  border: 3px solid #ffffff;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #ffe14d 0%,
+    #7df7c0 30%,
+    #2bdfe8 62%,
+    #ff9ac6 88%,
+    #b48cff 100%
+  );
+  box-shadow: 0 4px 0 #e8d6ea;
+}
+
+body.theme-fallguys .minimap-dot {
+  border: 2.5px solid #ffffff;
+  box-shadow: 0 2px 0 rgba(43, 36, 64, 0.35);
+}
+
+body.theme-fallguys .minimap-finish-line {
+  border: 2px solid #ffffff;
+}
+
+/* --- 우승 모달 --- */
+body.theme-fallguys .modal-card {
+  border-radius: 30px;
+  padding: 24px;
+}
+
+body.theme-fallguys .modal-badge {
+  background: var(--fg-lemon);
+  color: #7a5600;
+  border: 0;
+  border-radius: 999px;
+  box-shadow: 0 4px 0 var(--fg-lemon-deep);
+  font-weight: 400;
+}
+
+body.theme-fallguys .winner-title {
+  font-size: 2.3rem;
+  font-weight: 400;
+  text-shadow: 0 4px 0 rgba(255, 255, 255, 0.9);
+}
+
+body.theme-fallguys .winner-stat-box {
+  background: #fff4fa;
+  border: 0;
+  border-radius: 16px;
+  box-shadow: 0 3px 0 #f2d7e6;
+}
+
+body.theme-fallguys .modal-rankings-list {
+  background: #fff7fc;
+  border: 0;
+  border-radius: 18px;
+  box-shadow: inset 0 2px 0 #f4e0ec;
+}
+
+body.theme-fallguys .modal-rank-row.is-winner {
+  background: var(--fg-lemon);
+  border-radius: 999px;
+}
+
+body.theme-fallguys .modal-rank-row {
+  border-radius: 999px;
+  font-weight: 400;
+}
+
+/* --- 모바일에서도 젤리 느낌 유지 --- */
+@media (max-width: 768px) {
+  body.theme-fallguys #leaderboard-panel {
+    border: 0;
+    border-radius: 22px;
+    box-shadow: 0 7px 0 #e8d6ea, 0 16px 30px rgba(107, 63, 120, 0.2);
+  }
+
+  body.theme-fallguys .primary-cta-btn {
+    border-radius: 20px;
+  }
+
+  body.theme-fallguys #countdown-text {
+    -webkit-text-stroke: 4px #ffffff;
+    text-shadow: 0 8px 0 var(--fg-pink-deep);
   }
 }

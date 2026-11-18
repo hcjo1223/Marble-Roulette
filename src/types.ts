@@ -2,7 +2,9 @@ export type CameraMode = 'LEAD' | 'LAST' | 'TOP' | 'FREE';
 
 export type WinningRule = 'FIRST' | 'LAST' | 'NTH';
 
-export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO' | 'DINOSAUR';
+export type MapTheme = 'PLAYGROUND' | 'TAEKWONDO' | 'DINOSAUR' | 'POOL';
+
+export type UiTheme = 'BASE' | 'FALLGUYS';
 
 export type ObstacleDensity = 'NORMAL' | 'LIGHT';
 
