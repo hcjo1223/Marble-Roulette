@@ -1868,33 +1868,41 @@ export class ObstacleCourse {
   private createWaterBalloonMesh(): THREE.Group {
     const group = new THREE.Group();
     const balloon = new THREE.Mesh(
-      new THREE.SphereGeometry(1.15, 18, 14),
+      new THREE.SphereGeometry(1.25, 18, 14),
       new THREE.MeshStandardMaterial({
-        color: 0x38bdf8,
+        color: 0xff5fa2,
         transparent: true,
-        opacity: 0.82,
-        roughness: 0.1,
-        metalness: 0.15,
-        emissive: 0x0284c7,
-        emissiveIntensity: 0.22,
+        opacity: 0.92,
+        roughness: 0.08,
+        metalness: 0.2,
+        emissive: 0xe0417f,
+        emissiveIntensity: 0.35,
       })
     );
     balloon.scale.set(1, 1.12, 1);
     balloon.castShadow = true;
     group.add(balloon);
 
+    // 하늘에서도 잘 보이도록 두른 흰색 밴딩
+    const band = new THREE.Mesh(
+      new THREE.TorusGeometry(1.25, 0.13, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.25 })
+    );
+    band.rotation.x = Math.PI / 2;
+    group.add(band);
+
     const shine = new THREE.Mesh(
-      new THREE.SphereGeometry(0.3, 10, 8),
+      new THREE.SphereGeometry(0.32, 10, 8),
       new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.1 })
     );
-    shine.position.set(-0.42, 0.55, 0.78);
+    shine.position.set(-0.46, 0.6, 0.84);
     group.add(shine);
 
     const knot = new THREE.Mesh(
-      new THREE.ConeGeometry(0.26, 0.5, 8),
-      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.3 })
+      new THREE.ConeGeometry(0.28, 0.55, 8),
+      new THREE.MeshStandardMaterial({ color: 0xe0417f, roughness: 0.3 })
     );
-    knot.position.y = -1.34;
+    knot.position.y = -1.45;
     knot.rotation.x = Math.PI;
     group.add(knot);
     return group;
@@ -2064,7 +2072,7 @@ export class ObstacleCourse {
       this.courseGroup.remove(drop.mesh);
       this.courseGroup.remove(drop.marker);
       this.poolDrops.splice(i, 1);
-      this.spawnPoolSplash(impact, drop.kind === 'DUCK' ? '#fde047' : '#7dd3fc', particles);
+      this.spawnPoolSplash(impact, drop.kind === 'DUCK' ? '#fde047' : '#ff9ac6', particles);
       sound.playPoopSplat();
       sound.playRagdollHit(1.35);
 
