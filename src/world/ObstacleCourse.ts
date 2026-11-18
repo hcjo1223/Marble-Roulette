@@ -4879,10 +4879,13 @@ export class ObstacleCourse {
     const ctx = canvas.getContext('2d')!;
 
     const isPlayground = this.mapTheme === 'PLAYGROUND';
+    const isDino = this.mapTheme === 'DINOSAUR';
     const isPool = this.mapTheme === 'POOL';
     const isFg = this.mapTheme === 'FALLGUYS';
     const labelText = isPlayground
       ? '💥 쾅!! 박치기!'
+      : isDino
+      ? '💥 공룡돌진!!'
       : isPool
       ? '💥 물벼락!!'
       : isFg
@@ -4891,6 +4894,8 @@ export class ObstacleCourse {
 
     ctx.fillStyle = isPlayground
       ? '#fde047'
+      : isDino
+      ? '#bbf7d0'
       : isPool
       ? '#a5f3fc'
       : isFg

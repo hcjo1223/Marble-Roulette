@@ -87,15 +87,15 @@ body.slowmo-active #letterbox-bottom {
 /* Top Center Stage Pill & Rainbow Progress Bar (IMG_2317 style) */
 #top-stage-bar {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top));
+  top: max(14px, env(safe-area-inset-top));
   left: 50%;
   transform: translateX(-50%);
-  width: min(560px, calc(100vw - 380px));
+  width: min(580px, calc(100vw - 400px));
   z-index: 20;
   display: flex;
   flex-direction: column;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   pointer-events: none;
 }
 
@@ -103,7 +103,7 @@ body.slowmo-active #letterbox-bottom {
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 10px;
   flex-wrap: wrap;
 }
 
@@ -112,7 +112,7 @@ body.slowmo-active #letterbox-bottom {
   color: var(--ink-dark);
   border: 2px solid var(--border-ink);
   border-radius: 999px;
-  padding: 5px 14px;
+  padding: 6px 14px;
   font-size: 0.85rem;
   font-weight: 800;
   box-shadow: 0 3px 0 rgba(15, 23, 42, 0.22);
@@ -279,12 +279,12 @@ body.slowmo-active #letterbox-bottom {
 /* Top Right Quick Controls */
 #top-right-actions {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  right: 14px;
+  top: max(14px, env(safe-area-inset-top));
+  right: 16px;
   z-index: 25;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 button {
@@ -302,7 +302,7 @@ button:active {
   color: var(--ink-dark);
   border: 2px solid var(--border-ink);
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 7px 14px;
   font-size: 0.8rem;
   font-weight: 800;
   box-shadow: 0 3px 0 rgba(15, 23, 42, 0.22);
@@ -328,24 +328,24 @@ button:active {
 /* Left Crisp Pill Leaderboard (IMG_2317 style) */
 #leaderboard-panel {
   position: absolute;
-  top: max(12px, env(safe-area-inset-top));
-  left: 14px;
-  width: 184px;
-  max-height: calc(100dvh - 28px);
+  top: max(14px, env(safe-area-inset-top));
+  left: 16px;
+  width: 192px;
+  max-height: calc(100dvh - 32px);
   z-index: 22;
   display: flex;
   flex-direction: column;
-  gap: 5px;
+  gap: 8px;
 }
 
 .pill-leaderboard-list {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 7px;
   overflow-y: auto;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
-  padding-right: 2px;
+  padding: 2px 4px 6px 0;
 }
 
 .leader-item {
@@ -353,7 +353,7 @@ button:active {
   grid-template-columns: 24px 12px 1fr auto;
   align-items: center;
   gap: 6px;
-  padding: 4px 10px;
+  padding: 5px 10px;
   background: rgba(255, 255, 255, 0.92);
   border: 1.5px solid #334155;
   border-radius: 999px;
@@ -429,7 +429,7 @@ button:active {
   background: rgba(255, 255, 255, 0.85);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 4px 8px;
+  padding: 5px 10px;
   font-size: 0.68rem;
   font-weight: 700;
   color: var(--ink-muted);
@@ -447,23 +447,23 @@ button:active {
 
 #setup-panel {
   position: absolute;
-  top: 66px;
-  right: 14px;
-  width: 340px;
-  max-height: calc(100dvh - 140px);
+  top: 72px;
+  right: 16px;
+  width: 372px;
+  max-height: calc(100dvh - 156px);
   overflow-y: auto;
   touch-action: pan-y;
   -webkit-overflow-scrolling: touch;
-  padding: 16px;
+  padding: 20px;
   z-index: 30;
   display: flex;
   flex-direction: column;
-  gap: 13px;
+  gap: 18px;
   transition: transform 0.24s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
 }
 
 #setup-panel.collapsed {
-  transform: translateX(380px);
+  transform: translateX(400px);
   opacity: 0;
   pointer-events: none;
 }
@@ -472,26 +472,27 @@ button:active {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: 10px;
+  padding-bottom: 4px;
 }
 
 .panel-header h2 {
-  font-size: 0.96rem;
+  font-size: 0.98rem;
   font-weight: 800;
 }
 
 .panel-header-actions {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 10px;
 }
 
 .panel-close-btn {
   background: #f1f5f9;
   color: var(--ink-dark);
   border: 1.5px solid #cbd5e1;
-  width: 28px;
-  height: 28px;
+  width: 30px;
+  height: 30px;
   border-radius: 8px;
   font-weight: 800;
 }
@@ -500,22 +501,23 @@ button:active {
   background: #e0f2fe;
   color: #0369a1;
   border: 1.5px solid #7dd3fc;
-  padding: 3px 9px;
+  padding: 4px 11px;
   border-radius: 999px;
-  font-size: 0.72rem;
+  font-size: 0.74rem;
   font-weight: 800;
 }
 
 .form-section {
   display: flex;
   flex-direction: column;
-  gap: 7px;
+  gap: 10px;
 }
 
 .field-label {
-  font-size: 0.78rem;
+  font-size: 0.8rem;
   font-weight: 800;
   color: var(--ink-dark);
+  padding-left: 2px;
 }
 
 .field-label small {
@@ -533,11 +535,11 @@ button:active {
   background: #f8fafc;
   border: 2px solid #cbd5e1;
   border-radius: 10px;
-  padding: 10px;
+  padding: 12px;
   color: var(--ink-dark);
   font-family: var(--font-sans);
   font-size: 0.85rem;
-  line-height: 1.45;
+  line-height: 1.5;
   resize: vertical;
   user-select: text;
 }
@@ -550,7 +552,7 @@ button:active {
 .preset-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 10px 9px;
 }
 
 .preset-btn {
@@ -558,8 +560,8 @@ button:active {
   color: var(--ink-dark);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 7px 8px;
-  font-size: 0.75rem;
+  padding: 9px 10px;
+  font-size: 0.76rem;
   font-weight: 700;
 }
 
@@ -570,7 +572,7 @@ button:active {
 .map-selector {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 10px 9px;
 }
 
 .map-btn {
@@ -578,18 +580,19 @@ button:active {
   color: var(--ink-muted);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px 8px;
-  font-size: 0.78rem;
+  padding: 10px 8px;
+  font-size: 0.77rem;
   font-weight: 800;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  line-height: 1.25;
 }
 
 .map-btn-icon {
-  width: 24px;
-  height: 24px;
+  width: 22px;
+  height: 22px;
   border-radius: 999px;
   object-fit: cover;
   border: 1.5px solid #cbd5e1;
@@ -613,21 +616,10 @@ button:active {
   border-color: #dc2626;
 }
 
-.map-btn[data-map="DINOSAUR"] {
-  grid-column: span 2;
-}
-
 .map-btn[data-map="DINOSAUR"].active {
   background: #dcfce7;
   color: #166534;
   border-color: #16a34a;
-}
-
-.map-btn[data-map="POOL"] {
-  grid-column: span 2;
-  background: #ecfeff;
-  color: #0e7490;
-  border-color: #67e8f9;
 }
 
 .map-btn[data-map="POOL"].active {
@@ -636,10 +628,15 @@ button:active {
   border-color: #0891b2;
 }
 
+.map-btn[data-map="FALLGUYS"] {
+  grid-column: span 2;
+  font-size: 0.74rem;
+}
+
 .ui-theme-selector {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 10px 9px;
 }
 
 .ui-theme-btn {
@@ -647,7 +644,7 @@ button:active {
   color: var(--ink-muted);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px 8px;
+  padding: 9px 8px;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -671,7 +668,7 @@ button:active {
 .density-selector {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 6px;
+  gap: 10px 9px;
 }
 
 .density-btn {
@@ -679,7 +676,7 @@ button:active {
   color: var(--ink-muted);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px 8px;
+  padding: 10px 8px;
   font-size: 0.78rem;
   font-weight: 800;
 }
@@ -699,7 +696,7 @@ button:active {
 .flick-selector {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 9px;
 }
 
 .flick-btn {
@@ -707,7 +704,7 @@ button:active {
   color: var(--ink-muted);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px 6px;
+  padding: 10px 6px;
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -733,7 +730,7 @@ button:active {
 .rule-selector {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
+  gap: 9px;
 }
 
 .rule-btn {
@@ -741,7 +738,7 @@ button:active {
   color: var(--ink-muted);
   border: 1.5px solid #cbd5e1;
   border-radius: 8px;
-  padding: 8px 6px;
+  padding: 10px 6px;
   font-size: 0.76rem;
   font-weight: 800;
 }
@@ -758,7 +755,7 @@ button:active {
   justify-content: space-between;
   background: #f8fafc;
   border: 1.5px solid #cbd5e1;
-  padding: 8px 10px;
+  padding: 10px 12px;
   border-radius: 8px;
   font-size: 0.8rem;
   font-weight: 700;
@@ -778,7 +775,8 @@ button:active {
 .action-stack {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
+  margin-top: 2px;
 }
 
 .primary-cta-btn {
@@ -811,27 +809,28 @@ button:active {
 /* Teacher Prank Intervention Bar */
 #prank-bar {
   position: absolute;
-  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 54px);
+  bottom: calc(max(14px, env(safe-area-inset-bottom)) + 68px);
   left: 50%;
   transform: translateX(-50%);
   z-index: 21;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: rgba(255, 255, 255, 0.86);
   border: 2px solid var(--border-ink);
   border-radius: 999px;
-  padding: 5px 8px;
+  padding: 6px 10px 10px;
   box-shadow: 0 3px 0 rgba(15, 23, 42, 0.22);
 }
 
 .prank-pill {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 5px;
   border: 1.5px solid var(--border-ink);
   border-radius: 999px;
-  padding: 5px 11px;
+  padding: 6px 12px;
   font-size: 0.76rem;
   font-weight: 800;
   white-space: nowrap;
@@ -872,11 +871,11 @@ button:active {
   z-index: 22;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   background: rgba(255, 255, 255, 0.85);
   border: 2px solid var(--border-ink);
   border-radius: 999px;
-  padding: 6px 10px;
+  padding: 7px 12px 10px;
   box-shadow: 0 4px 0 rgba(15, 23, 42, 0.22);
 }
 
@@ -885,7 +884,7 @@ button:active {
   color: var(--ink-dark);
   border: 1.5px solid transparent;
   border-radius: 999px;
-  padding: 6px 12px;
+  padding: 7px 13px;
   font-size: 0.78rem;
   font-weight: 800;
   white-space: nowrap;
@@ -923,7 +922,7 @@ button:active {
 
 .slowmo-banner {
   position: absolute;
-  top: 118px;
+  top: 126px;
   left: 50%;
   transform: translateX(-50%);
   background: #f43f5e;
@@ -943,7 +942,7 @@ button:active {
 
 .flick-banner {
   position: absolute;
-  top: 118px;
+  top: 126px;
   left: 50%;
   transform: translateX(-50%);
   background: linear-gradient(135deg, #facc15 0%, #f97316 100%);
@@ -997,19 +996,19 @@ button:active {
   max-width: 450px;
   max-height: 90dvh;
   overflow-y: auto;
-  padding: 22px;
+  padding: 24px;
   display: flex;
   flex-direction: column;
   align-items: center;
   text-align: center;
-  gap: 12px;
+  gap: 16px;
 }
 
 .modal-badge {
   background: #fef3c7;
   color: #92400e;
   border: 1.5px solid #f59e0b;
-  padding: 4px 12px;
+  padding: 5px 14px;
   border-radius: 999px;
   font-size: 0.78rem;
   font-weight: 800;
@@ -1030,17 +1029,17 @@ button:active {
   width: 100%;
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 8px;
+  gap: 10px;
 }
 
 .winner-stat-box {
   background: #f8fafc;
   border: 1.5px solid #cbd5e1;
   border-radius: 10px;
-  padding: 8px 6px;
+  padding: 10px 8px;
   display: flex;
   flex-direction: column;
-  gap: 3px;
+  gap: 4px;
 }
 
 .w-label {
@@ -1059,31 +1058,31 @@ button:active {
   text-align: left;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .modal-rankings-wrap h3 {
-  font-size: 0.76rem;
+  font-size: 0.78rem;
   color: var(--ink-muted);
 }
 
 .modal-rankings-list {
-  max-height: 150px;
+  max-height: 156px;
   overflow-y: auto;
   background: #f8fafc;
   border: 1.5px solid #cbd5e1;
   border-radius: 10px;
-  padding: 8px;
+  padding: 10px;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
 }
 
 .modal-rank-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 5px 10px;
+  padding: 6px 10px;
   border-radius: 6px;
   font-size: 0.8rem;
   font-weight: 600;
@@ -1098,7 +1097,7 @@ button:active {
   width: 100%;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
 }
 
 .hidden {
@@ -1116,7 +1115,7 @@ button:active {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 6px;
+    margin-bottom: 8px;
     font-size: 0.82rem;
     font-weight: 800;
   }
@@ -1126,27 +1125,31 @@ button:active {
   }
 
   #top-right-actions {
-    top: max(8px, env(safe-area-inset-top));
-    left: 8px;
-    right: 8px;
+    top: max(10px, env(safe-area-inset-top));
+    left: 12px;
+    right: 12px;
     justify-content: space-between;
-    gap: 4px;
+    gap: 8px;
   }
 
   .pill-btn {
-    padding: 6px 9px;
-    font-size: 0.74rem;
+    padding: 7px 10px;
+    font-size: 0.75rem;
   }
 
   #top-stage-bar {
-    top: calc(max(8px, env(safe-area-inset-top)) + 44px);
-    width: calc(100vw - 20px);
-    gap: 5px;
+    top: calc(max(10px, env(safe-area-inset-top)) + 50px);
+    width: calc(100vw - 24px);
+    gap: 9px;
+  }
+
+  .stage-pills-row {
+    gap: 8px;
   }
 
   .stage-pill {
-    padding: 3px 10px;
-    font-size: 0.74rem;
+    padding: 5px 11px;
+    font-size: 0.75rem;
   }
 
   .map-pill-icon {
@@ -1155,15 +1158,15 @@ button:active {
   }
 
   #leaderboard-panel {
-    top: calc(max(8px, env(safe-area-inset-top)) + 116px);
-    left: 8px;
-    right: 8px;
+    top: calc(max(10px, env(safe-area-inset-top)) + 124px);
+    left: 12px;
+    right: 12px;
     width: auto;
-    max-height: calc(100dvh - 220px);
+    max-height: calc(100dvh - 256px);
     background: rgba(255, 255, 255, 0.95);
     border: 2.5px solid var(--border-ink);
     border-radius: 16px;
-    padding: 12px;
+    padding: 14px;
     transition: transform 0.22s ease, opacity 0.2s ease;
   }
 
@@ -1174,11 +1177,12 @@ button:active {
   }
 
   #setup-panel {
-    top: calc(max(8px, env(safe-area-inset-top)) + 52px);
-    left: 8px;
-    right: 8px;
+    top: calc(max(10px, env(safe-area-inset-top)) + 56px);
+    left: 12px;
+    right: 12px;
     width: auto;
-    max-height: calc(100dvh - 175px);
+    max-height: calc(100dvh - 196px);
+    gap: 17px;
   }
 
   #setup-panel.collapsed {
@@ -1191,46 +1195,46 @@ button:active {
   }
 
   #prank-bar {
-    bottom: calc(max(8px, env(safe-area-inset-bottom)) + 48px);
-    left: 8px;
-    right: 8px;
+    bottom: calc(max(10px, env(safe-area-inset-bottom)) + 64px);
+    left: 12px;
+    right: 12px;
     transform: none;
     justify-content: space-between;
-    padding: 4px 6px;
-    gap: 4px;
+    padding: 6px 8px 9px;
+    gap: 6px;
   }
 
   .prank-pill {
-    padding: 5px 5px;
-    font-size: 0.68rem;
+    padding: 6px 4px;
+    font-size: 0.69rem;
     flex: 1;
     text-align: center;
   }
 
   #camera-dock {
-    bottom: max(8px, env(safe-area-inset-bottom));
-    left: 8px;
-    right: 8px;
+    bottom: max(10px, env(safe-area-inset-bottom));
+    left: 12px;
+    right: 12px;
     transform: none;
     justify-content: space-between;
-    padding: 5px 6px;
-    gap: 4px;
+    padding: 6px 8px 9px;
+    gap: 6px;
   }
 
   .cam-pill {
-    padding: 7px 8px;
+    padding: 7px 6px;
     font-size: 0.72rem;
     flex: 1;
     text-align: center;
   }
 
   .slowmo-banner {
-    top: calc(max(8px, env(safe-area-inset-top)) + 116px);
+    top: calc(max(10px, env(safe-area-inset-top)) + 124px);
     font-size: 0.72rem;
   }
 
   .flick-banner {
-    top: calc(max(8px, env(safe-area-inset-top)) + 150px);
+    top: calc(max(10px, env(safe-area-inset-top)) + 158px);
     font-size: 0.76rem;
     padding: 5px 12px;
   }
@@ -1433,7 +1437,7 @@ body.theme-fallguys .light-card-panel {
 }
 
 body.theme-fallguys #setup-panel {
-  padding: 18px;
+  padding: 22px 20px;
 }
 
 body.theme-fallguys .panel-header h2 {
@@ -1515,7 +1519,6 @@ body.theme-fallguys .map-btn[data-map="DINOSAUR"].active {
   box-shadow: 0 5px 0 #71d283;
 }
 
-body.theme-fallguys .map-btn[data-map="POOL"],
 body.theme-fallguys .map-btn[data-map="POOL"].active {
   background: #b8f3fb;
   color: #084f5c;

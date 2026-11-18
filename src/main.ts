@@ -231,6 +231,16 @@ class RagdollDerbyGame {
             `🏃💥 ${flickNum}등 [${racer.name}] 거대 캐릭터와 정면 충돌! 대역전 찬스!`
           );
         }
+      } else if (this.mapTheme === 'DINOSAUR') {
+        if (isManual) {
+          this.showBannerMessage(
+            `🦖💥 거대 공룡 돌진! [${racer.name}] 정면으로 날려버렸다!`
+          );
+        } else {
+          this.showBannerMessage(
+            `🦖💥 ${flickNum}등 [${racer.name}] 결승 직전 공룡 돌진! 대역전 찬스!`
+          );
+        }
       } else if (this.mapTheme === 'POOL') {
         if (isManual) {
           this.showBannerMessage(`💧💥 거대 물벼락 강타! [${racer.name}] 물바다로 날아갔다!`);
@@ -300,6 +310,9 @@ class RagdollDerbyGame {
         prankFlickBtn.innerHTML =
           '<img src="./boss-character.jpg" alt="캐릭터 박치기" class="boss-pill-icon" /><span>1등 박치기!</span>';
         prankFlickBtn.title = '현재 1등에게 거대 캐릭터 몸통 박치기 발동!';
+      } else if (this.mapTheme === 'DINOSAUR') {
+        prankFlickBtn.textContent = '🦖 1등 공룡돌진!';
+        prankFlickBtn.title = '현재 1등에게 즉시 거대 공룡 돌진 발동!';
       } else if (this.mapTheme === 'POOL') {
         prankFlickBtn.textContent = '💧 1등 물벼락!';
         prankFlickBtn.title = '현재 1등에게 즉시 거대 물벼락 발동!';
@@ -335,21 +348,39 @@ class RagdollDerbyGame {
 
     const quickFlickBtn = document.getElementById('btn-quick-flick-toggle');
     if (quickFlickBtn) {
-      const isPlayground = this.mapTheme === 'PLAYGROUND';
       const iconHtml = '<img src="./boss-character.jpg" alt="캐릭터" class="boss-pill-icon" />';
+      const trapLabel =
+        this.mapTheme === 'PLAYGROUND'
+          ? '박치기'
+          : this.mapTheme === 'DINOSAUR'
+          ? '공룡돌진'
+          : this.mapTheme === 'POOL'
+          ? '물벼락'
+          : this.mapTheme === 'FALLGUYS'
+          ? '펀치'
+          : '딱밤';
+      const trapIcon =
+        this.mapTheme === 'DINOSAUR'
+          ? '🦖'
+          : this.mapTheme === 'POOL'
+          ? '💧'
+          : this.mapTheme === 'FALLGUYS'
+          ? '🎪'
+          : '👆';
+
       if (this.flickMode === 'OFF') {
-        quickFlickBtn.textContent = isPlayground ? '🚫 박치기: 끔' : '🚫 딱밤: 끔';
+        quickFlickBtn.textContent = `🚫 ${trapLabel}: 끔`;
       } else if (this.flickMode === 'CHAOS') {
-        if (isPlayground) {
-          quickFlickBtn.innerHTML = `${iconHtml}<span>박치기: 4명</span>`;
+        if (this.mapTheme === 'PLAYGROUND') {
+          quickFlickBtn.innerHTML = `${iconHtml}<span>${trapLabel}: 4명</span>`;
         } else {
-          quickFlickBtn.textContent = '💥 딱밤: 4명';
+          quickFlickBtn.textContent = `💥 ${trapLabel}: 4명`;
         }
       } else {
-        if (isPlayground) {
-          quickFlickBtn.innerHTML = `${iconHtml}<span>박치기: 2명</span>`;
+        if (this.mapTheme === 'PLAYGROUND') {
+          quickFlickBtn.innerHTML = `${iconHtml}<span>${trapLabel}: 2명</span>`;
         } else {
-          quickFlickBtn.textContent = '👆 딱밤: 2명';
+          quickFlickBtn.textContent = `${trapIcon} ${trapLabel}: 2명`;
         }
       }
       quickFlickBtn.classList.toggle('off-active', this.flickMode === 'OFF');
@@ -697,6 +728,10 @@ class RagdollDerbyGame {
       this.showBannerMessage(
         this.mapTheme === 'PLAYGROUND'
           ? '🏃 거대 캐릭터가 출동 중이에요! 잠시만요!'
+          : this.mapTheme === 'DINOSAUR'
+          ? '🦖 거대 공룡이 출동 중이에요! 잠시만요!'
+          : this.mapTheme === 'POOL'
+          ? '💧 거대 물벼락이 준비 중이에요! 잠시만요!'
           : this.mapTheme === 'FALLGUYS'
           ? '🎪 대형 펀치가 출동 중이에요! 잠시만요!'
           : '👆 딱밤 손가락이 출동 중이에요! 잠시만요!',
