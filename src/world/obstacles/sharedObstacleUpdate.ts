@@ -117,7 +117,7 @@ export function updateSharedObstacles(
     const vx = curX - sh.lastX;
     sh.lastX = curX;
 
-    if (sh.mesh.userData.isMustangBoss) {
+    if (sh.mesh.userData.isMustangBoss || sh.mesh.userData.isCharacterBoss) {
       const walkCycle = elapsedTime * 7.2 + sh.phase;
       const bounceY = Math.abs(Math.sin(walkCycle)) * 0.14;
       const trackYaw = (sh.mesh.userData.trackYaw as number) || 0;
@@ -128,6 +128,21 @@ export function updateSharedObstacles(
       const bodyPivot = sh.mesh.userData.bodyPivot as THREE.Group | undefined;
       if (bodyPivot) {
         bodyPivot.rotation.set(0.06, 0, Math.sin(walkCycle) * 0.08);
+      }
+      if (!sh.mesh.userData.hasGlbModel) {
+        const stride = Math.sin(walkCycle) * 0.65;
+        const leftLeg = sh.mesh.userData.leftLegPivot as THREE.Group | undefined;
+        const rightLeg = sh.mesh.userData.rightLegPivot as THREE.Group | undefined;
+        const leftArm = sh.mesh.userData.leftArmPivot as THREE.Group | undefined;
+        const rightArm = sh.mesh.userData.rightArmPivot as THREE.Group | undefined;
+        if (leftLeg && rightLeg) {
+          leftLeg.rotation.x = stride;
+          rightLeg.rotation.x = -stride;
+        }
+        if (leftArm && rightArm) {
+          leftArm.rotation.x = -stride * 0.85;
+          rightArm.rotation.x = stride * 0.85;
+        }
       }
       sh.body.setNextKinematicTranslation({ x: curX, y: sh.baseY + sh.halfH, z: sh.baseZ });
     } else {

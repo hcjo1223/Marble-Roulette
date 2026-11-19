@@ -1,8 +1,14 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d-compat';
-import { envCollisionGroup, getTrackCenterX, getTrackHeightAtZ } from '../courseMath';
+import {
+  envCollisionGroup,
+  getTrackCenterX,
+  getTrackHeightAtZ,
+  getTrackYawAtZ,
+} from '../courseMath';
 import type { CourseBuildContext } from '../courseTypes';
 import type { SharedObstacleSystem } from '../obstacles/SharedObstacleSystem';
+import { createTaekwondoBossCharacter } from '../traps/bossCharacterModel';
 
 export function buildTaekwondoCourse(
   ctx: CourseBuildContext,
@@ -12,6 +18,7 @@ export function buildTaekwondoCourse(
   buildZone2BreakingAndPosts(ctx, shared);
   buildZone3PoomsaeAndShockwaves(ctx, shared);
   buildZone4SparringArena(ctx, shared);
+  buildTaekwondoBossObstacles(ctx, shared);
 }
 
 function buildZone1Dojo(ctx: CourseBuildContext, shared: SharedObstacleSystem): void {
@@ -217,4 +224,82 @@ function buildZone4SparringArena(ctx: CourseBuildContext, shared: SharedObstacle
 
   // 4. Master's Final 4-Blade Black-Belt Sweeper before finish (Z = 127)
   shared.createSweeper(127, 0, 5.2, 4.3, 4, 0x0f172a);
+}
+
+function buildTaekwondoBossObstacles(
+  ctx: CourseBuildContext,
+  shared: SharedObstacleSystem
+): void {
+  const isLight = ctx.obstacleDensity === 'LIGHT';
+  const specs = isLight
+    ? [
+        { z: 41.5, ampX: 5.0, freq: 1.85, phase: 0, scale: 1.45 },
+        { z: 99.0, ampX: 4.2, freq: 2.05, phase: Math.PI, scale: 1.5 },
+      ]
+    : [
+        { z: 41.5, ampX: 5.2, freq: 2.05, phase: 0, scale: 1.45 },
+        { z: 72.4, ampX: 5.2, freq: 2.3, phase: 1.6, scale: 1.5 },
+        { z: 99.0, ampX: 4.4, freq: 2.5, phase: 3.1, scale: 1.55 },
+      ];
+
+  for (const sp of specs) {
+    createTaekwondoBossObstacle(ctx, shared, sp.z, sp.ampX, sp.freq, sp.phase, sp.scale);
+  }
+}
+
+function createTaekwondoBossObstacle(
+  ctx: CourseBuildContext,
+  shared: SharedObstacleSystem,
+  z: number,
+  ampX: number,
+  freq: number,
+  phase: number,
+  scale: number
+): void {
+  const cx = getTrackCenterX(z);
+  const halfW = 0.85 * scale;
+  const halfH = 1.45 * scale;
+  const halfD = 0.65 * scale;
+  const y = getTrackHeightAtZ(z) + 0.05;
+  const initX = cx + Math.sin(phase) * ampX;
+  const trackYaw = getTrackYawAtZ(z);
+
+  const built = createTaekwondoBossCharacter();
+  const group = built.root;
+  group.scale.setScalar(scale);
+  group.position.set(initX, y, z);
+  group.rotation.y = Math.PI + trackYaw;
+  group.userData.isCharacterBoss = true;
+  group.userData.trackYaw = trackYaw;
+  group.userData.bodyPivot = built.bodyPivot;
+  group.userData.leftArmPivot = built.leftArmPivot;
+  group.userData.rightArmPivot = built.rightArmPivot;
+  group.userData.leftLegPivot = built.leftLegPivot;
+  group.userData.rightLegPivot = built.rightLegPivot;
+  ctx.courseGroup.add(group);
+
+  const body = ctx.createBody(
+    RAPIER.RigidBodyDesc.kinematicPositionBased().setTranslation(initX, y + halfH, z)
+  );
+  ctx.world.createCollider(
+    RAPIER.ColliderDesc.cuboid(halfW, halfH, halfD)
+      .setRestitution(1.05)
+      .setCollisionGroups(envCollisionGroup()),
+    body
+  );
+
+  shared.slidingShields.push({
+    body,
+    mesh: group,
+    baseZ: z,
+    baseY: y,
+    halfW,
+    halfH,
+    halfD,
+    ampX,
+    freq,
+    phase,
+    lastX: initX,
+    hitCooldowns: new Map(),
+  });
 }
