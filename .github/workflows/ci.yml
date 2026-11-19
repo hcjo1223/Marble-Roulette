@@ -1,12 +1,19 @@
-name: CI Build Check
+name: CI & Deploy GitHub Pages
 
 on:
   push:
     branches: ['main']
+  pull_request:
+    branches: ['main']
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 15
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -21,4 +28,70 @@ jobs:
         run: npm ci
 
       - name: TypeScript & Vite Build Check
-        run: npx tsc && npx vite build
+        run: npx tsc && npx vite build && touch dist/.nojekyll
+
+      - name: Upload dist artifact
+        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+        uses: actions/upload-artifact@v4
+        with:
+          name: dist-site
+          path: dist/
+          include-hidden-files: true
+          retention-days: 1
+
+  deploy:
+    needs: build
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: pages-deploy
+      cancel-in-progress: false
+    permissions:
+      contents: write
+      pages: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Download dist artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: dist-site
+          path: _dist
+
+      - name: Publish dist to gh-pages and request Pages build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          test -f _dist/index.html
+
+          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
+            git fetch --depth=1 origin gh-pages
+            git worktree add --detach _gh_pages FETCH_HEAD
+          else
+            git worktree add --detach _gh_pages
+            git -C _gh_pages checkout --orphan gh-pages
+          fi
+
+          find _gh_pages -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
+          cp -a _dist/. _gh_pages/
+          touch _gh_pages/.nojekyll
+
+          git -C _gh_pages config user.name "github-actions[bot]"
+          git -C _gh_pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git -C _gh_pages add -A
+
+          pushed=false
+          if git -C _gh_pages diff --cached --quiet; then
+            echo "No changes in dist; gh-pages is already up to date."
+          else
+            git -C _gh_pages commit -m "chore(deploy): publish ${GITHUB_SHA::7} from main"
+            git -C _gh_pages push origin HEAD:gh-pages
+            pushed=true
+          fi
+
+          if [ "$pushed" = "true" ] || [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
+            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds"
+          fi
