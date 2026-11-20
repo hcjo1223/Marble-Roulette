@@ -21,6 +21,15 @@ export const GROUP_LIMB = 0x0004;
 
 /** 리스폰 직후 넉백 면역 시간(초). */
 const RESPAWN_SHIELD_SEC = 1.5;
+/** 구제 이동 직후 넉백 면역 시간(초). */
+const RESCUE_SHIELD_SEC = 2.5;
+/** 이 시간(초) 안에 이미 이 횟수만큼 떨어졌으면 다음 리스폰은 다음 체크포인트로 건너뛴다. */
+const REPEAT_RESPAWN_WINDOW_SEC = 20;
+const REPEAT_RESPAWN_COUNT = 2;
+/** 이 시간(초) 동안 PROGRESS_STEP_Z 만큼도 전진하지 못하면 앞으로 옮겨 준다. */
+const STUCK_RESCUE_SEC = 20;
+const PROGRESS_STEP_Z = 3;
+const STUCK_RESCUE_ADVANCE_Z = 8;
 
 export function makeCollisionGroups(membership: number, filter: number): number {
   return ((membership & 0xffff) << 16) | (filter & 0xffff);
@@ -112,6 +121,11 @@ export class RagdollRacer {
   private respawnCheckpoints: RespawnCheckpoint[] = [];
   /** 이번 레이스에서 낙하·이탈로 리스폰한 횟수. */
   public respawnCount: number = 0;
+  /** 이번 레이스에서 구제 장치(반복 낙하 건너뛰기·진척 없음 이동)가 발동한 횟수. */
+  public rescueCount: number = 0;
+  private recentRespawnTimes: number[] = [];
+  private progressAnchorZ: number = -Infinity;
+  private progressAnchorTime: number = 0;
   private waitingIdleTicks: number = 0;
 
   constructor(
@@ -544,6 +558,37 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  private getCheckpointBehind(z: number, finishZ: number): RespawnCheckpoint {
+    return this.respawnCheckpoints.length > 0
+      ? pickRespawnCheckpoint(this.respawnCheckpoints, z)
+      : { z: finishZ - 32 };
+  }
+
+  /** z보다 앞에 있는 가장 가까운 체크포인트 (없으면 null). */
+  private getCheckpointAhead(z: number): RespawnCheckpoint | null {
+    let best: RespawnCheckpoint | null = null;
+    for (const cp of this.respawnCheckpoints) {
+      if (cp.z > z + 0.5 && (!best || cp.z < best.z)) best = cp;
+    }
+    return best;
+  }
+
+  private checkpointToPosition(
+    cp: RespawnCheckpoint,
+    trackCenterXAtZ: (z: number) => number,
+    trackHalfWidthAtZ: (z: number) => number,
+    trackHeightAtZ: (z: number) => number
+  ): THREE.Vector3 {
+    const halfW = trackHalfWidthAtZ(cp.z);
+    const spread = cp.spread ?? 1.2;
+    const offset = THREE.MathUtils.clamp(
+      (cp.xOffset ?? 0) + (Math.random() * 2 - 1) * spread,
+      -(halfW - 1.5),
+      halfW - 1.5
+    );
+    return new THREE.Vector3(trackCenterXAtZ(cp.z) + offset, trackHeightAtZ(cp.z) + 2.8, cp.z);
+  }
+
   public updateAIAndPhysics(
     dt: number,
     totalRacers: number,
@@ -600,6 +645,8 @@ export class RagdollRacer {
     }
 
     if (this.state === 'WAITING') {
+      this.progressAnchorZ = pos.z;
+      this.progressAnchorTime = this.elapsedTime;
       this.waitingIdleTicks++;
       if (!this.lowCostMode || this.waitingIdleTicks < 8 || this.waitingIdleTicks % 4 === 0) {
         this.maintainUprightPose(0, dt, 0.4);
@@ -655,33 +702,66 @@ export class RagdollRacer {
       : pos.y < expectedFloorY - 8.5;
 
     if (isFallen || isOffSide) {
-      let safeZ: number;
-      let safeX: number;
+      // 최근 리스폰 기록 (반복 낙오자 판정용)
+      this.recentRespawnTimes = this.recentRespawnTimes.filter(
+        (t) => this.elapsedTime - t < REPEAT_RESPAWN_WINDOW_SEC
+      );
+      const isRepeatFaller = this.recentRespawnTimes.length >= REPEAT_RESPAWN_COUNT;
+      this.recentRespawnTimes.push(this.elapsedTime);
+
+      let respawnPos: THREE.Vector3;
       if (inLastSection) {
-        // 마지막 구간: 떨어진 위치 뒤의 가장 가까운 안전 체크포인트(장애물 통과 직후 지점)
-        const cp =
-          this.respawnCheckpoints.length > 0
-            ? pickRespawnCheckpoint(this.respawnCheckpoints, pos.z)
-            : { z: finishZ - 32 };
-        safeZ = cp.z;
-        const halfW = trackHalfWidthAtZ(safeZ);
-        const spread = cp.spread ?? 1.2;
-        const offset = THREE.MathUtils.clamp(
-          (cp.xOffset ?? 0) + (Math.random() * 2 - 1) * spread,
-          -(halfW - 1.5),
-          halfW - 1.5
-        );
-        safeX = trackCenterXAtZ(safeZ) + offset;
+        // 마지막 구간: 떨어진 위치 뒤의 가장 가까운 안전 체크포인트(장애물 통과 직후 지점).
+        // 짧은 시간에 여러 번 떨어진 레이서는 다음 체크포인트로 건너뛰게 해 준다.
+        let cp = this.getCheckpointBehind(pos.z, finishZ);
+        if (isRepeatFaller) {
+          const next = this.getCheckpointAhead(cp.z);
+          if (next) {
+            cp = next;
+            this.rescueCount++;
+          }
+        }
+        respawnPos = this.checkpointToPosition(cp, trackCenterXAtZ, trackHalfWidthAtZ, trackHeightAtZ);
       } else {
-        safeZ = Math.max(4, pos.z - 4);
+        const safeZ = Math.max(4, pos.z - 4);
         const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
-        safeX = trackCenterXAtZ(safeZ) + (Math.random() - 0.5) * safeSpan;
+        const safeX = trackCenterXAtZ(safeZ) + (Math.random() - 0.5) * safeSpan;
+        respawnPos = new THREE.Vector3(safeX, trackHeightAtZ(safeZ) + 2.8, safeZ);
       }
-      const respawnPos = new THREE.Vector3(safeX, trackHeightAtZ(safeZ) + 2.8, safeZ);
       this.teleportTo(respawnPos);
       this.respawnCount++;
       this.respawnShieldTimer = RESPAWN_SHIELD_SEC;
       if (onRespawnCallback) onRespawnCallback(respawnPos);
+      return;
+    }
+
+    // 진척 없음 구제: 일정 시간 동안 앞으로 3m도 못 나가면 조금 앞으로 옮겨 준다.
+    // (벽 끼임, 역방향 벨트+넉백 왕복, 장애물 연속 피격 등 어떤 원인이든 레이스가 끝없이 늘어지지 않게)
+    if (pos.z > this.progressAnchorZ + PROGRESS_STEP_Z) {
+      this.progressAnchorZ = pos.z;
+      this.progressAnchorTime = this.elapsedTime;
+    } else if (this.elapsedTime - this.progressAnchorTime > STUCK_RESCUE_SEC) {
+      const fromZ = Math.max(this.progressAnchorZ, pos.z);
+      let rescuePos: THREE.Vector3;
+      const aheadCp =
+        fromZ + STUCK_RESCUE_ADVANCE_Z >= lastSectionStartZ ? this.getCheckpointAhead(fromZ) : null;
+      if (aheadCp) {
+        rescuePos = this.checkpointToPosition(aheadCp, trackCenterXAtZ, trackHalfWidthAtZ, trackHeightAtZ);
+      } else {
+        // 앞쪽 체크포인트가 없으면 무조건 앞으로 (절대 뒤로 되돌리지 않는다)
+        const z = Math.min(fromZ + STUCK_RESCUE_ADVANCE_Z, finishZ - 2);
+        rescuePos = new THREE.Vector3(
+          trackCenterXAtZ(z) + (Math.random() * 2 - 1) * 1.5,
+          trackHeightAtZ(z) + 2.8,
+          z
+        );
+      }
+      this.teleportTo(rescuePos);
+      this.rescueCount++;
+      this.respawnShieldTimer = RESCUE_SHIELD_SEC;
+      this.progressAnchorZ = rescuePos.z;
+      this.progressAnchorTime = this.elapsedTime;
+      if (onRespawnCallback) onRespawnCallback(rescuePos);
       return;
     }
 
