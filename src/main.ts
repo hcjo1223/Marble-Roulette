@@ -41,6 +41,27 @@ import {
   updateRuleTelemetryUI,
 } from './ui/raceHud';
 
+
+/** 물리 시뮬레이션 고정 스텝(초). */
+const PHYSICS_STEP = 1 / 60;
+/** 한 렌더 프레임에서 따라잡을 수 있는 최대 물리 스텝 수(0.2초 분량 = 5fps까지 실시간 유지). */
+const MAX_PHYSICS_STEPS_PER_FRAME = 12;
+/** 프레임 간격 상한(초). 탭 복귀 직후 같은 큰 공백만 잘라낸다. */
+const MAX_FRAME_DT = 0.25;
+
+/**
+ * vsync 지터(16.4ms/16.9ms 등)로 고정 스텝 개수가 0/2로 흔들려 끊겨 보이는 것을 막기 위해,
+ * 프레임 간격이 1/60초의 정수배에 아주 가까우면 그 값으로 맞춘다.
+ */
+function snapFrameDt(dt: number): number {
+  const ratio = dt / PHYSICS_STEP;
+  const nearest = Math.round(ratio);
+  if (nearest >= 1 && nearest <= 4 && Math.abs(ratio - nearest) < 0.08) {
+    return nearest * PHYSICS_STEP;
+  }
+  return dt;
+}
+
 class RagdollDerbyGame {
   private world!: RAPIER_NS.World;
   private scene!: THREE.Scene;
@@ -77,6 +98,7 @@ class RagdollDerbyGame {
   private winnerAnnounced: boolean = false;
 
   private lastFrameTime: number = performance.now();
+  private physicsAccumulator: number = 0;
   private uiUpdateAccum: number = 0;
 
   private isMobileViewport(): boolean {
@@ -928,7 +950,8 @@ class RagdollDerbyGame {
   private animate(now: number): void {
     requestAnimationFrame((t) => this.animate(t));
 
-    const realDt = Math.min(0.05, (now - this.lastFrameTime) / 1000);
+    // 탭 전환 등으로 프레임이 크게 끊긴 경우만 상한을 둔다(물리 스텝 수 상한과 별개).
+    const realDt = snapFrameDt(Math.min(MAX_FRAME_DT, Math.max(0, (now - this.lastFrameTime) / 1000)));
     this.lastFrameTime = now;
 
     const decisiveRacer =
@@ -974,66 +997,92 @@ class RagdollDerbyGame {
 
     const isSlowMo = this.manualSlowMo || this.autoSlowMoTimer > 0;
     const timeScale = isSlowMo ? 0.22 : this.highlightPip.getTimeScale();
-    const simDt = realDt * timeScale;
 
-    if (this.phase === 'RACING') {
-      this.raceElapsed += simDt;
-      document.getElementById('hud-timer')!.textContent = `${this.raceElapsed.toFixed(1)}초`;
+    // 고정 스텝 물리: 실제 경과 시간을 누적해 PHYSICS_STEP 단위로 시뮬레이션을 돌린다.
+    // 프레임레이트와 무관하게 같은 실제 시간 동안 같은 게임 시간이 흐른다.
+    // 슬로모션은 스텝 횟수가 아니라 스텝당 게임 시간을 줄여 표현한다(화면은 계속 부드럽게).
+    this.physicsAccumulator += realDt;
+    let stepCount = 0;
+    while (this.physicsAccumulator >= PHYSICS_STEP && stepCount < MAX_PHYSICS_STEPS_PER_FRAME) {
+      this.physicsAccumulator -= PHYSICS_STEP;
+      stepCount++;
     }
+    if (stepCount === MAX_PHYSICS_STEPS_PER_FRAME && this.physicsAccumulator >= PHYSICS_STEP) {
+      // 너무 느린 기기: 따라잡지 못한 시간은 버려서 지연이 계속 쌓이지 않게 한다.
+      this.physicsAccumulator = 0;
+    }
+    const stepDt = PHYSICS_STEP * timeScale;
+    const simDt = stepDt * stepCount;
 
     const frameStart = performance.now();
-    const tCourseStart = performance.now();
-    this.course.update(
-      simDt,
-      this.racers,
-      this.particles,
-      this.sound,
-      this.phase === 'RACING',
-      this.cameraDirector.camera.position
-    );
-    const tAiStart = performance.now();
+    let courseMs = 0;
+    let aiMs = 0;
+    let worldStepMs = 0;
+    let raceTimeAdvanced = false;
 
-    for (const r of this.racers) {
-      r.updateAIAndPhysics(
-        simDt,
-        this.racers.length,
-        (z) => this.course.getTrackCenterX(z),
-        (z) => this.course.getTrackHalfWidthAtZ(z),
-        (z) => this.course.getTrackHeightAtZ(z),
-        () => this.sound.playJump(),
-        (respawnPos) => this.particles.spawnRespawnFlash(respawnPos),
-        finishZ
-      );
+    for (let step = 0; step < stepCount; step++) {
+      const isRacingStep = this.phase === 'RACING';
+      if (isRacingStep) {
+        this.raceElapsed += stepDt;
+        raceTimeAdvanced = true;
+      }
 
-      if (this.phase === 'RACING' && r.state !== 'FINISHED') {
-        const pos = r.getPosition();
-        const withinTrackWidth =
-          Math.abs(pos.x - this.course.getTrackCenterX(pos.z)) <=
-          this.course.getTrackHalfWidthAtZ(pos.z) + 0.9;
-        if (pos.z >= finishZ && withinTrackWidth) {
-          this.finishedRacers.push(r);
-          const order = this.finishedRacers.length;
-          r.markFinished(order, this.raceElapsed);
-          this.sound.playFinishChime(order === this.targetRank);
+      const tCourseStart = performance.now();
+      this.course.update(stepDt, this.racers, this.particles, this.sound, isRacingStep);
+      const tAiStart = performance.now();
 
-          if (order === this.targetRank && !this.winnerAnnounced) {
-            this.announceWinner(r);
-          }
+      for (const r of this.racers) {
+        r.updateAIAndPhysics(
+          stepDt,
+          this.racers.length,
+          (z) => this.course.getTrackCenterX(z),
+          (z) => this.course.getTrackHalfWidthAtZ(z),
+          (z) => this.course.getTrackHeightAtZ(z),
+          () => this.sound.playJump(),
+          (respawnPos) => this.particles.spawnRespawnFlash(respawnPos),
+          finishZ
+        );
 
-          if (this.finishedRacers.length === this.racers.length) {
-            this.phase = 'FINISHED';
+        if (this.phase === 'RACING' && r.state !== 'FINISHED') {
+          const pos = r.getPosition();
+          const withinTrackWidth =
+            Math.abs(pos.x - this.course.getTrackCenterX(pos.z)) <=
+            this.course.getTrackHalfWidthAtZ(pos.z) + 0.9;
+          if (pos.z >= finishZ && withinTrackWidth) {
+            this.finishedRacers.push(r);
+            const order = this.finishedRacers.length;
+            r.markFinished(order, this.raceElapsed);
+            this.sound.playFinishChime(order === this.targetRank);
+
+            if (order === this.targetRank && !this.winnerAnnounced) {
+              this.announceWinner(r);
+            }
+
+            if (this.finishedRacers.length === this.racers.length) {
+              this.phase = 'FINISHED';
+            }
           }
         }
       }
+
+      const tWorldStart = performance.now();
+      this.world.timestep = stepDt;
+      this.world.step();
+      for (const r of this.racers) {
+        r.refreshCachedPosition();
+      }
+      const tWorldEnd = performance.now();
+
+      courseMs += tAiStart - tCourseStart;
+      aiMs += tWorldStart - tAiStart;
+      worldStepMs += tWorldEnd - tWorldStart;
     }
 
-    const tWorldStart = performance.now();
-    this.world.timestep = Math.max(0.002, simDt);
-    this.world.step();
-    for (const r of this.racers) {
-      r.refreshCachedPosition();
+    if (raceTimeAdvanced) {
+      document.getElementById('hud-timer')!.textContent = `${this.raceElapsed.toFixed(1)}초`;
     }
 
+    this.course.updateVisuals(realDt * timeScale, this.cameraDirector.camera.position);
     this.particles.update(simDt);
 
     this.sortedRacers.sort((a, b) => {
@@ -1092,9 +1141,9 @@ class RagdollDerbyGame {
     this.perfTelemetry.recordFrame(
       {
         frameMs: Math.max(tFrameEnd - frameStart, realDt * 1000),
-        courseMs: tAiStart - tCourseStart,
-        aiMs: tWorldStart - tAiStart,
-        worldStepMs: tSyncStart - tWorldStart,
+        courseMs,
+        aiMs,
+        worldStepMs,
         syncMs: tUiStart - tSyncStart,
         uiMs: tRenderStart - tUiStart,
         renderMs: tFrameEnd - tRenderStart,
@@ -1116,3 +1165,8 @@ const game = new RagdollDerbyGame();
 game.init().catch((err) => {
   console.error('Failed to initialize Ragdoll Derby 3D:', err);
 });
+
+// 개발 서버에서만 콘솔/자동화 테스트용으로 게임 인스턴스를 노출한다.
+if (import.meta.env.DEV) {
+  (window as unknown as { __game?: unknown }).__game = game;
+}
