@@ -2,6 +2,12 @@ import * as THREE from 'three';
 import type { CameraMode } from '../types';
 import { RagdollRacer } from '../entities/RagdollRacer';
 import { FINISH_Z } from '../world/ObstacleCourse';
+import { getTrackHeightAtZ } from '../world/courseMath';
+
+/** 카메라가 따라가는 높이의 상한: 트랙 바닥 + 이 값(m). 함정에 날아간 레이서를 따라 하늘만 비추지 않게 한다. */
+const CAMERA_FOCUS_MAX_ABOVE_TRACK = 2.5;
+/** 카메라 초점의 좌우 한계: 트랙 중심 ± 이 값(m). */
+const CAMERA_FOCUS_MAX_LATERAL = 12;
 
 export class CameraDirector {
   public camera: THREE.PerspectiveCamera;
@@ -158,6 +164,25 @@ export class CameraDirector {
     this.setMode('FREE', onModeChange);
   }
 
+  private readonly _focusPos = new THREE.Vector3();
+  private readonly _focusPos2 = new THREE.Vector3();
+  private focusToggle = false;
+
+  /** 레이서 위치를 트랙 근처로 제한한 카메라 초점 (반환 벡터는 다음 두 번 호출까지만 유효). */
+  private focusPos(
+    racer: RagdollRacer,
+    trackCenterXAtZ?: (z: number) => number
+  ): THREE.Vector3 {
+    this.focusToggle = !this.focusToggle;
+    const out = (this.focusToggle ? this._focusPos : this._focusPos2).copy(racer.getPosition());
+    out.y = Math.min(out.y, getTrackHeightAtZ(out.z) + CAMERA_FOCUS_MAX_ABOVE_TRACK);
+    if (trackCenterXAtZ) {
+      const cx = trackCenterXAtZ(out.z);
+      out.x = THREE.MathUtils.clamp(out.x, cx - CAMERA_FOCUS_MAX_LATERAL, cx + CAMERA_FOCUS_MAX_LATERAL);
+    }
+    return out;
+  }
+
   public update(
     realDt: number,
     sortedRacers: RagdollRacer[],
@@ -181,7 +206,7 @@ export class CameraDirector {
 
     // Climax Photo-Finish Slow-Mo Camera override
     if (this.isClimaxSlowMo && decisiveRacer) {
-      const p = decisiveRacer.getPosition();
+      const p = this.focusPos(decisiveRacer, trackCenterXAtZ);
       desiredPos.set(
         p.x + 5.2 * portraitScale,
         p.y + 3.4 * portraitScale,
@@ -204,7 +229,7 @@ export class CameraDirector {
     } else if (this.mode === 'LAST') {
       // Follow Last Place racer
       const lastRacer = pool[pool.length - 1];
-      const p = lastRacer.getPosition();
+      const p = this.focusPos(lastRacer, trackCenterXAtZ);
       const offsetX = Math.sin(this.orbitYaw) * effectiveDist;
       const offsetZ = -Math.cos(this.orbitYaw) * effectiveDist;
       const offsetY = Math.sin(this.orbitPitch) * effectiveDist + 2.5;
@@ -220,7 +245,7 @@ export class CameraDirector {
       if (!this.focusedRacerId && target) {
         this.focusedRacerId = target.id;
       }
-      const p = target.getPosition();
+      const p = this.focusPos(target, trackCenterXAtZ);
       const dist = effectiveDist * 0.44;
       const offsetX = Math.sin(this.orbitYaw) * dist;
       const offsetZ = -Math.cos(this.orbitYaw) * dist;
@@ -232,8 +257,8 @@ export class CameraDirector {
       // 'LEAD' mode: Follow leading pack & look ahead down the curved track
       const leader = pool[0];
       const second = pool.length > 1 ? pool[1] : leader;
-      const p1 = leader.getPosition();
-      const p2 = second.getPosition();
+      const p1 = this.focusPos(leader, trackCenterXAtZ);
+      const p2 = this.focusPos(second, trackCenterXAtZ);
 
       const blend = Math.abs(p1.z - p2.z) < 8 ? 0.35 : 0.0;
       const focusX = p1.x * (1 - blend) + p2.x * blend;

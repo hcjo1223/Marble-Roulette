@@ -171,6 +171,15 @@ export function getManualFlickBusyMessage(mapTheme: MapTheme): string {
   return '👆 딱밤 손가락이 출동 중이에요! 잠시만요!';
 }
 
+/** 결과 화면·공유 카드 등에 쓰는 맵 표시 이름 (한 곳에서만 관리). */
+export const MAP_DISPLAY_NAMES: Record<MapTheme, { icon: string; name: string; label: string }> = {
+  PLAYGROUND: { icon: '🏫', name: '운동장', label: '🏫 맵1 · 운동장 경주' },
+  TAEKWONDO: { icon: '🥋', name: '태비태권도', label: '🥋 맵2 · 태비태권도' },
+  DINOSAUR: { icon: '🏎️', name: '공룡 카트', label: '🏎️ 맵3 · 공룡 카트' },
+  POOL: { icon: '🏊', name: '수영장', label: '🏊 맵4 · 수영장 스플래시' },
+  FALLGUYS: { icon: '🎪', name: '폴가이즈', label: '🎪 맵5 · 폴가이즈' },
+};
+
 export function getQuickMapButtonConfig(mapTheme: MapTheme): {
   html?: string;
   text?: string;

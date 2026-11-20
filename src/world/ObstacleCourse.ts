@@ -1,3 +1,4 @@
+import { getRespawnCheckpoints, type RespawnCheckpoint } from './respawnCheckpoints';
 import * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d';
 import type { FlickMode, MapTheme, ObstacleDensity } from '../types';
@@ -36,6 +37,8 @@ export class ObstacleCourse {
   public readonly obstacleDensity: ObstacleDensity;
   public readonly finishZ: number;
   public readonly trackLength: number;
+  /** 마지막 구간 리스폰 체크포인트 (맵·장애물 밀도별). */
+  public readonly respawnCheckpoints: RespawnCheckpoint[];
 
   private courseGroup: THREE.Group;
   private bodies: RAPIER.RigidBody[] = [];
@@ -131,6 +134,12 @@ export class ObstacleCourse {
     this.startGateBody = startGate.startGateBody;
 
     const skipBase = Boolean(customLayout?.clearBaseObstacles);
+    this.respawnCheckpoints = getRespawnCheckpoints(
+      this.mapTheme,
+      this.obstacleDensity,
+      this.finishZ,
+      skipBase
+    );
     if (!skipBase) {
       if (this.mapTheme === 'TAEKWONDO') {
         buildTaekwondoCourse(this.ctx, this.sharedObstacles);
@@ -343,29 +352,17 @@ export class ObstacleCourse {
     this.sharedObstacles.reset();
   }
 
+  /**
+   * 물리 고정 스텝마다 호출된다. 물리/게임플레이에 영향을 주는 로직만 둔다.
+   */
   public update(
     dt: number,
     racers: RagdollRacer[],
     particles: ParticleSystem,
     sound: SoundManager,
-    isRacing: boolean = false,
-    cameraPos?: THREE.Vector3
+    isRacing: boolean = false
   ): void {
     this.elapsedTime += dt;
-
-    // 0. Fade overhead arch signs when camera approaches so they never block racer sightlines
-    if (cameraPos) {
-      for (const ob of this.overheadBanners) {
-        const isOccludingRange = cameraPos.z >= ob.z - 12 && cameraPos.z <= ob.z + 1.5;
-        const targetOpacity = isOccludingRange ? 0.14 : 1.0;
-        ob.mat.opacity = THREE.MathUtils.lerp(
-          ob.mat.opacity,
-          targetOpacity,
-          Math.min(1, dt * 10 + 0.15)
-        );
-        ob.mat.depthWrite = ob.mat.opacity > 0.5;
-      }
-    }
 
     // 1. Start Gate animation
     if (this.gateOpen && this.gateOpenProgress < 1) {
@@ -392,8 +389,28 @@ export class ObstacleCourse {
 
     // 20. Fall Guys course cushions, punch walls & pistons
     this.fallguysCourse.update(dt, this.elapsedTime, racers, particles, sound, isRacing);
+  }
 
-    // 21. Cheering stadium crowd animation
+  /**
+   * 렌더링 프레임마다 1회 호출된다. 물리와 무관한 화면 연출만 둔다.
+   * dt는 이번 프레임에 진행된 게임 시간(슬로모션 반영)이다.
+   */
+  public updateVisuals(dt: number, cameraPos?: THREE.Vector3): void {
+    // Fade overhead arch signs when camera approaches so they never block racer sightlines
+    if (cameraPos) {
+      for (const ob of this.overheadBanners) {
+        const isOccludingRange = cameraPos.z >= ob.z - 12 && cameraPos.z <= ob.z + 1.5;
+        const targetOpacity = isOccludingRange ? 0.14 : 1.0;
+        ob.mat.opacity = THREE.MathUtils.lerp(
+          ob.mat.opacity,
+          targetOpacity,
+          Math.min(1, dt * 10 + 0.15)
+        );
+        ob.mat.depthWrite = ob.mat.opacity > 0.5;
+      }
+    }
+
+    // Cheering stadium crowd animation
     this.crowd.update(dt, this.elapsedTime);
   }
 }
