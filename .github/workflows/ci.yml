@@ -1,10 +1,15 @@
-name: CI & Deploy GitHub Pages
+name: CI/CD Pipeline (feature/* -> gh-page -> main)
 
 on:
   push:
-    branches: ['main']
+    branches:
+      - 'feature/**'
+      - 'gh-page'
+      - 'main'
   pull_request:
-    branches: ['main']
+    branches:
+      - 'gh-page'
+      - 'main'
   workflow_dispatch:
 
 permissions:
@@ -15,6 +20,18 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
+      - name: Verify Branch Promotion Flow (feature/* -> gh-page -> main)
+        if: github.event_name == 'pull_request'
+        env:
+          BASE_REF: ${{ github.base_ref }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          echo "PR Promotion Check: ${HEAD_REF} -> ${BASE_REF}"
+          if [ "${BASE_REF}" = "main" ] && [ "${HEAD_REF}" != "gh-page" ]; then
+            echo "::error::main(운영) 브랜치로는 gh-page(검증) 브랜치에서만 PR을 병합할 수 있습니다. (현재 head: ${HEAD_REF}). 먼저 feature/* -> gh-page PR을 병합해 GitHub Pages 검증 화면에서 확인한 뒤 gh-page -> main PR을 생성해 주세요."
+            exit 1
+          fi
+
       - name: Checkout
         uses: actions/checkout@v4
 
@@ -33,7 +50,7 @@ jobs:
       - name: Report dist bundle sizes
         run: |
           {
-            echo "### 📦 Build Output Summary"
+            echo "### 📦 Build Output Summary (\`${{ github.ref_name }}\`)"
             echo ""
             echo "| File | Size |"
             echo "| --- | ---: |"
@@ -43,68 +60,88 @@ jobs:
             done
           } >> "$GITHUB_STEP_SUMMARY"
 
-      - name: Upload dist artifact
-        if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+      - name: Upload Pages artifact for gh-page staging
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/gh-page'
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: dist/
+
+      - name: Upload dist artifact for production
+        if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
         uses: actions/upload-artifact@v4
         with:
           name: dist-site
           path: dist/
           include-hidden-files: true
-          retention-days: 1
+          retention-days: 3
 
-  deploy:
+  deploy-staging-pages:
+    name: Deploy Staging (GitHub Pages)
     needs: build
-    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/gh-page'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     concurrency:
-      group: pages-deploy
+      group: pages-staging-deploy
       cancel-in-progress: false
     permissions:
-      contents: write
+      contents: read
       pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages (Staging / Verification)
+        id: deployment
+        uses: actions/deploy-pages@v4
+
+      - name: Write Staging Verification Summary
+        run: |
+          {
+            echo "### 🧪 검증용 화면 (GitHub Pages) 배포 완료"
+            echo ""
+            echo "- **검증 URL**: ${{ steps.deployment.outputs.page_url }}"
+            echo "- **소스 브랜치**: \`gh-page\` (\`${{ github.sha }}\`)"
+            echo "- **다음 단계 (운영 배포)**: 검증 완료 후 [🚀 gh-page → main 운영 배포 PR 생성하기](https://github.com/${{ github.repository }}/compare/main...gh-page?expand=1)"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+  deploy-production-vercel:
+    name: Deploy Production (Vercel)
+    needs: build
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    concurrency:
+      group: vercel-production-deploy
+      cancel-in-progress: false
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Download dist artifact
-        uses: actions/download-artifact@v4
-        with:
-          name: dist-site
-          path: _dist
-
-      - name: Publish dist to gh-pages and request Pages build
+      - name: Deploy to Vercel Production (CLI or Git Integration)
         env:
-          GH_TOKEN: ${{ github.token }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.VERCEL_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.VERCEL_PROJECT_ID }}
         run: |
-          set -euo pipefail
-          test -f _dist/index.html
-
-          if git ls-remote --exit-code --heads origin gh-pages >/dev/null; then
-            git fetch --depth=1 origin gh-pages
-            git worktree add --detach _gh_pages FETCH_HEAD
+          if [ -n "${VERCEL_TOKEN}" ] && [ -n "${VERCEL_ORG_ID}" ] && [ -n "${VERCEL_PROJECT_ID}" ]; then
+            echo "Deploying main to Vercel Production via Vercel CLI..."
+            npx --yes vercel@latest pull --yes --environment=production --token="${VERCEL_TOKEN}"
+            npx --yes vercel@latest build --prod --token="${VERCEL_TOKEN}"
+            DEPLOY_URL=$(npx --yes vercel@latest deploy --prebuilt --prod --token="${VERCEL_TOKEN}")
+            {
+              echo "### 🚀 운영 화면 (Vercel Production) 배포 완료"
+              echo ""
+              echo "- **운영 URL**: ${DEPLOY_URL}"
+              echo "- **소스 브랜치**: \`main\` (\`${{ github.sha }}\`)"
+            } >> "$GITHUB_STEP_SUMMARY"
           else
-            git worktree add --detach _gh_pages
-            git -C _gh_pages checkout --orphan gh-pages
-          fi
-
-          find _gh_pages -mindepth 1 -maxdepth 1 ! -name '.git' -exec rm -rf {} +
-          cp -a _dist/. _gh_pages/
-          touch _gh_pages/.nojekyll
-
-          git -C _gh_pages config user.name "github-actions[bot]"
-          git -C _gh_pages config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git -C _gh_pages add -A
-
-          pushed=false
-          if git -C _gh_pages diff --cached --quiet; then
-            echo "No changes in dist; gh-pages is already up to date."
-          else
-            git -C _gh_pages commit -m "chore(deploy): publish ${GITHUB_SHA::7} from main"
-            git -C _gh_pages push origin HEAD:gh-pages
-            pushed=true
-          fi
-
-          if [ "$pushed" = "true" ] || [ "${GITHUB_EVENT_NAME}" = "workflow_dispatch" ]; then
-            gh api -X POST "repos/${GITHUB_REPOSITORY}/pages/builds"
+            echo "Vercel CLI secrets not set; relying on Vercel GitHub App integration (vercel.json)."
+            {
+              echo "### 🚀 운영 브랜치 (\`main\`) 반영 완료 — Vercel 배포"
+              echo ""
+              echo "- **연동 방식**: \`vercel.json\` 기준 Vercel GitHub App이 \`main\` 브랜치 병합을 감지하여 운영 화면을 자동 배포합니다."
+              echo "- *(선택)* GitHub Actions에서 직접 Vercel CLI로 배포하려면 저장소 Secrets에 \`VERCEL_TOKEN\`, \`VERCEL_ORG_ID\`, \`VERCEL_PROJECT_ID\`를 등록하세요."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi

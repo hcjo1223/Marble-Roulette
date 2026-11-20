@@ -38,7 +38,7 @@
 - **사운드 & 관중 연출 확장**: 5개 맵 전용 멀티채널 BGM + 시작 호각·물보라·튜브 탑승·관중 환호/탄식 Web Audio 효과음 + `InstancedMesh` 경기장 관중석 애니메이션
 - **모바일 48인 물리·렌더링 최적화 & 프레임 측정기**: `lowCost` LOD 파이프라인, GPU 인스턴싱, `@dimforge/rapier3d` 외부 스트리밍 WASM 청크 분리 (`?perf=1` 또는 `📊 프레임 측정`)
 
-## 🚀 실행 및 배포 방법
+## 🚀 실행 및 CI/CD 배포 파이프라인 (`feature/*` → `gh-page` → `main`)
 
 ```bash
 npm install
@@ -46,5 +46,10 @@ npm run dev       # 로컬 개발 서버
 npm run build     # TypeScript 검사 + Vite 프로덕션 번들 (dist/ 생성)
 ```
 
-- `main` 브랜치에 푸시하면 GitHub Actions([`.github/workflows/ci.yml`](./.github/workflows/ci.yml))가 `dist/`를 빌드해 `gh-pages`로 자동 배포합니다.
+| 단계 | 브랜치 | 직접 Push | 역할 및 자동 배포 대상 |
+| --- | --- | :---: | --- |
+| **1. 개발** | `feature/*` | ✅ 허용 | 기능 개발 및 CI 빌드(`tsc && vite build`) 검증 → 완료 후 `gh-page`로 PR 생성 |
+| **2. 검증 (Staging)** | `gh-page` | ❌ 금지 (PR 필수) | PR 병합 시 GitHub Actions([`.github/workflows/ci.yml`](./.github/workflows/ci.yml))가 **GitHub Pages 검증용 화면**(`https://hcjo1223.github.io/Marble-Roulette/`)에 자동 배포 |
+| **3. 운영 (Production)** | `main` | ❌ 금지 (`gh-page` PR만 허용) | `gh-page → main` PR 병합 시 **Vercel 운영 화면**([`vercel.json`](./vercel.json))으로 자동 배포 (`feature/* → main` 직행 PR은 CI가 자동 차단) |
+
 - 수업 현장 피드백 기록 및 다음 단계 반영은 [docs/CLASSROOM_FEEDBACK.md](./docs/CLASSROOM_FEEDBACK.md), 상세 기획 문서는 [docs/PLAN_AND_DESIGN.md](./docs/PLAN_AND_DESIGN.md)에서 확인할 수 있습니다.
