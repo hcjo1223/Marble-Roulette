@@ -487,6 +487,7 @@ class RagdollDerbyGame {
         this.mapTheme,
         lowCostMode
       );
+      racer.setRespawnCheckpoints(this.course.respawnCheckpoints);
       this.racers.push(racer);
     });
 

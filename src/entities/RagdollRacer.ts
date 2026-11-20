@@ -1,3 +1,7 @@
+import {
+  pickRespawnCheckpoint,
+  type RespawnCheckpoint,
+} from '../world/respawnCheckpoints';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import type { MapTheme, ParticipantEntry, RacerState } from '../types';
@@ -14,6 +18,9 @@ import {
 export const GROUP_ENV = 0x0001;
 export const GROUP_TORSO = 0x0002;
 export const GROUP_LIMB = 0x0004;
+
+/** 리스폰 직후 넉백 면역 시간(초). */
+const RESPAWN_SHIELD_SEC = 1.5;
 
 export function makeCollisionGroups(membership: number, filter: number): number {
   return ((membership & 0xffff) << 16) | (filter & 0xffff);
@@ -99,6 +106,12 @@ export class RagdollRacer {
   private turboTimer: number = 0;
   private turboBonus: number = 0;
   private tubeRideTimer: number = 0;
+  /** 리스폰 직후 장애물 넉백(triggerRagdoll·파도)을 무시하는 보호 시간(초). */
+  private respawnShieldTimer: number = 0;
+  /** 마지막 구간 리스폰 체크포인트(코스가 설정). 비어 있으면 finishZ - 32 사용. */
+  private respawnCheckpoints: RespawnCheckpoint[] = [];
+  /** 이번 레이스에서 낙하·이탈로 리스폰한 횟수. */
+  public respawnCount: number = 0;
   private waitingIdleTicks: number = 0;
 
   constructor(
@@ -348,8 +361,17 @@ export class RagdollRacer {
     return this.tubeRideTimer > 0;
   }
 
+  public setRespawnCheckpoints(checkpoints: RespawnCheckpoint[]): void {
+    this.respawnCheckpoints = checkpoints;
+  }
+
+  public hasRespawnShield(): boolean {
+    return this.respawnShieldTimer > 0;
+  }
+
   public applyWavePush(forceX: number, forceZ: number, isBigWave: boolean): void {
     if (this.state === 'FINISHED') return;
+    if (this.respawnShieldTimer > 0) return;
     if (this.isRidingTube()) {
       // Tube riders glide/surf high over waves with reduced sideways knockback
       this.torsoBody.applyImpulse(
@@ -434,6 +456,7 @@ export class RagdollRacer {
     duration: number = 1.25
   ): void {
     if (this.state === 'FINISHED') return;
+    if (this.respawnShieldTimer > 0) return;
 
     this.dismountTube();
     if (this.lowCostMode) {
@@ -548,6 +571,9 @@ export class RagdollRacer {
         this.turboBonus = 0;
       }
     }
+    if (this.respawnShieldTimer > 0) {
+      this.respawnShieldTimer = Math.max(0, this.respawnShieldTimer - dt);
+    }
     if (this.tubeRideTimer > 0) {
       this.tubeRideTimer = Math.max(0, this.tubeRideTimer - dt);
       if (this.rideTubeGroup && this.rideTubeGroup.visible) {
@@ -629,15 +655,32 @@ export class RagdollRacer {
       : pos.y < expectedFloorY - 8.5;
 
     if (isFallen || isOffSide) {
-      const safeZ = inLastSection ? finishZ - 32 : Math.max(4, pos.z - 4);
-      const safeCX = trackCenterXAtZ(safeZ);
-      const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
-      const respawnPos = new THREE.Vector3(
-        safeCX + (Math.random() - 0.5) * safeSpan,
-        trackHeightAtZ(safeZ) + 2.8,
-        safeZ
-      );
+      let safeZ: number;
+      let safeX: number;
+      if (inLastSection) {
+        // 마지막 구간: 떨어진 위치 뒤의 가장 가까운 안전 체크포인트(장애물 통과 직후 지점)
+        const cp =
+          this.respawnCheckpoints.length > 0
+            ? pickRespawnCheckpoint(this.respawnCheckpoints, pos.z)
+            : { z: finishZ - 32 };
+        safeZ = cp.z;
+        const halfW = trackHalfWidthAtZ(safeZ);
+        const spread = cp.spread ?? 1.2;
+        const offset = THREE.MathUtils.clamp(
+          (cp.xOffset ?? 0) + (Math.random() * 2 - 1) * spread,
+          -(halfW - 1.5),
+          halfW - 1.5
+        );
+        safeX = trackCenterXAtZ(safeZ) + offset;
+      } else {
+        safeZ = Math.max(4, pos.z - 4);
+        const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
+        safeX = trackCenterXAtZ(safeZ) + (Math.random() - 0.5) * safeSpan;
+      }
+      const respawnPos = new THREE.Vector3(safeX, trackHeightAtZ(safeZ) + 2.8, safeZ);
       this.teleportTo(respawnPos);
+      this.respawnCount++;
+      this.respawnShieldTimer = RESPAWN_SHIELD_SEC;
       if (onRespawnCallback) onRespawnCallback(respawnPos);
       return;
     }

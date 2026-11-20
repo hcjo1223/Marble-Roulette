@@ -1,3 +1,4 @@
+import { getRespawnCheckpoints, type RespawnCheckpoint } from './respawnCheckpoints';
 import * as THREE from 'three';
 import type RAPIER from '@dimforge/rapier3d';
 import type { FlickMode, MapTheme, ObstacleDensity } from '../types';
@@ -36,6 +37,8 @@ export class ObstacleCourse {
   public readonly obstacleDensity: ObstacleDensity;
   public readonly finishZ: number;
   public readonly trackLength: number;
+  /** 마지막 구간 리스폰 체크포인트 (맵·장애물 밀도별). */
+  public readonly respawnCheckpoints: RespawnCheckpoint[];
 
   private courseGroup: THREE.Group;
   private bodies: RAPIER.RigidBody[] = [];
@@ -131,6 +134,12 @@ export class ObstacleCourse {
     this.startGateBody = startGate.startGateBody;
 
     const skipBase = Boolean(customLayout?.clearBaseObstacles);
+    this.respawnCheckpoints = getRespawnCheckpoints(
+      this.mapTheme,
+      this.obstacleDensity,
+      this.finishZ,
+      skipBase
+    );
     if (!skipBase) {
       if (this.mapTheme === 'TAEKWONDO') {
         buildTaekwondoCourse(this.ctx, this.sharedObstacles);
