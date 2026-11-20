@@ -1079,6 +1079,221 @@
   gap: 6px;
 }
 
+/* Broadcast Highlight PIP Modal (Projector & Classroom View) */
+.highlight-pip-card {
+  position: absolute;
+  top: 98px;
+  right: 20px;
+  width: 320px;
+  z-index: 26;
+  border: 3.5px solid #1f1930;
+  border-radius: 20px;
+  overflow: hidden;
+  box-shadow: 0 7px 0 #1f1930, 0 18px 34px rgba(15, 23, 42, 0.34);
+  background: transparent;
+  cursor: pointer;
+  transform-origin: top right;
+}
+
+.highlight-pip-card.pip-pop {
+  animation: pipPopIn 0.28s cubic-bezier(0.22, 1.35, 0.36, 1);
+}
+
+@keyframes pipPopIn {
+  0% {
+    opacity: 0;
+    transform: scale(0.74) translateY(-10px);
+  }
+  70% {
+    opacity: 1;
+    transform: scale(1.04) translateY(0);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+.pip-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  padding: 7px 11px;
+  border-bottom: 3px solid #1f1930;
+  color: #ffffff;
+  font-weight: 800;
+}
+
+.pip-header.pip-theme-tube {
+  background: linear-gradient(135deg, #0ea5e9, #2bdfe8);
+}
+
+.pip-header.pip-theme-splash {
+  background: linear-gradient(135deg, #ff5fa2, #38bdf8);
+}
+
+.pip-header.pip-theme-duck {
+  background: linear-gradient(135deg, #f59e0b, #f43f5e);
+}
+
+.pip-header.pip-theme-wave {
+  background: linear-gradient(135deg, #7c3aed, #06b6d4);
+}
+
+.pip-live-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  background: rgba(15, 23, 42, 0.85);
+  color: #ffffff;
+  border-radius: 999px;
+  padding: 2px 8px;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  flex-shrink: 0;
+}
+
+.pip-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #ff3b30;
+  box-shadow: 0 0 6px #ff3b30;
+  animation: pipBlink 0.8s ease-in-out infinite;
+}
+
+@keyframes pipBlink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.25;
+  }
+}
+
+.pip-title {
+  font-size: 0.92rem;
+  font-weight: 800;
+  text-shadow: 0 2px 0 rgba(15, 23, 42, 0.35);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pip-header-right {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  flex-shrink: 0;
+}
+
+.pip-rank {
+  background: #ffe14d;
+  color: #1f1930;
+  border: 2px solid #1f1930;
+  border-radius: 999px;
+  padding: 1px 7px;
+  font-family: var(--font-mono);
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.pip-close-btn {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  border: 2px solid #1f1930;
+  background: #ffffff;
+  color: #1f1930;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pip-viewport-slot {
+  position: relative;
+  width: 100%;
+  height: 176px;
+  background: transparent;
+  overflow: hidden;
+}
+
+.pip-flash-overlay {
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.pip-sub-chip {
+  position: absolute;
+  left: 8px;
+  bottom: 8px;
+  background: rgba(15, 23, 42, 0.82);
+  color: #fef08a;
+  border: 1.5px solid rgba(255, 255, 255, 0.75);
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 0.74rem;
+  font-weight: 800;
+  max-width: calc(100% - 16px);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.pip-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 12px;
+  background: #ffffff;
+  border-top: 3px solid #1f1930;
+}
+
+.pip-player-id {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.pip-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 2px solid #1f1930;
+  flex-shrink: 0;
+}
+
+.pip-name {
+  font-size: 1.08rem;
+  font-weight: 800;
+  color: #1f1930;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pip-hint {
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: #475569;
+  background: #f1f5f9;
+  border-radius: 999px;
+  padding: 3px 8px;
+  flex-shrink: 0;
+}
+
 .hidden {
   display: none !important;
 }

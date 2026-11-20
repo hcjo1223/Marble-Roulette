@@ -48,6 +48,7 @@ export class PoolCourseSystem {
 
   public onPoolSplash?: (racer: RagdollRacer, kind: 'BALLOON' | 'DUCK') => void;
   public onTubeMount?: (racer: RagdollRacer) => void;
+  public onWaveHit?: (racer: RagdollRacer, isTubeRider: boolean) => void;
 
   constructor(ctx: CourseBuildContext, shared: SharedObstacleSystem) {
     this.ctx = ctx;
@@ -822,6 +823,7 @@ export class PoolCourseSystem {
               particles
             );
             sound.playWaterSplash(1.1);
+            this.onWaveHit?.(r, r.isRidingTube());
           }
         }
       }

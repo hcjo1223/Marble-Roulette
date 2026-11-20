@@ -16,6 +16,7 @@ import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
 import { ObstacleCourse } from './world/ObstacleCourse';
 import { CameraDirector } from './camera/CameraDirector';
+import { HighlightPipDirector } from './camera/HighlightPipDirector';
 import {
   PRESETS,
   applySkyTheme,
@@ -46,6 +47,7 @@ class RagdollDerbyGame {
   private renderer!: THREE.WebGLRenderer;
   private dirLight!: THREE.DirectionalLight;
   private cameraDirector!: CameraDirector;
+  private highlightPip!: HighlightPipDirector;
   private course!: ObstacleCourse;
   private particles!: ParticleSystem;
   private sound: SoundManager = new SoundManager();
@@ -201,6 +203,7 @@ class RagdollDerbyGame {
     this.bindCourseCallbacks();
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
     this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
+    this.highlightPip = new HighlightPipDirector((racerId) => this.focusOnRacer(racerId));
 
     this.cameraDirector.onCanvasTap = (clientX, clientY) => {
       this.handleCanvasTapFocus(clientX, clientY);
@@ -253,6 +256,8 @@ class RagdollDerbyGame {
   }
 
   private bindCourseCallbacks(): void {
+    const getLeadZ = () => this.sortedRacers[0]?.getPosition().z ?? 0;
+
     this.course.onFinishFlick = (racer, flickNum, isManual) => {
       this.showBannerMessage(
         getFinishFlickBannerMessage(this.mapTheme, racer.name, flickNum, isManual)
@@ -265,6 +270,16 @@ class RagdollDerbyGame {
         `${icon} 물벼락 강타! [${racer.name}] 크게 튕겨나갔다! 대역전 찬스!`,
         2.0
       );
+      this.highlightPip?.tryTrigger({
+        racer,
+        kind: kind === 'DUCK' ? 'DUCK' : 'SPLASH',
+        subtitle: kind === 'DUCK' ? '거대 고무오리 직격! 데굴데굴!' : '물풍선 맞고 빙글빙글!',
+        totalRacers: this.racers.length,
+        winningRule: this.winningRule,
+        targetRank: this.targetRank,
+        leadZ: getLeadZ(),
+        finishZ: this.course.finishZ,
+      });
     };
 
     this.course.onTubeMount = (racer) => {
@@ -275,6 +290,29 @@ class RagdollDerbyGame {
           1.8
         );
       }
+      this.highlightPip?.tryTrigger({
+        racer,
+        kind: 'TUBE',
+        subtitle: '튜브 장착! 파도 타고 역전 질주!',
+        totalRacers: this.racers.length,
+        winningRule: this.winningRule,
+        targetRank: this.targetRank,
+        leadZ: getLeadZ(),
+        finishZ: this.course.finishZ,
+      });
+    };
+
+    this.course.onWaveHit = (racer, isTubeRider) => {
+      this.highlightPip?.tryTrigger({
+        racer,
+        kind: 'WAVE',
+        subtitle: isTubeRider ? '튜브 타고 대왕 파도 점프!' : '거친 파도에 휩쓸렸다!',
+        totalRacers: this.racers.length,
+        winningRule: this.winningRule,
+        targetRank: this.targetRank,
+        leadZ: getLeadZ(),
+        finishZ: this.course.finishZ,
+      });
     };
   }
 
@@ -386,6 +424,7 @@ class RagdollDerbyGame {
     this.course.resetCourseState();
 
     this.tubeBannerCount = 0;
+    this.highlightPip?.reset();
 
     this.phase = 'READY';
     this.raceElapsed = 0;
@@ -861,6 +900,7 @@ class RagdollDerbyGame {
     this.autoSlowMoTimer = 0;
     this.manualSlowMo = false;
     this.setSlowMoVisuals(false);
+    this.highlightPip.hide(false);
 
     this.cameraDirector.focusedRacerId = winner.id;
     this.course.triggerCrowdExcitement(1.5, 3.5);
@@ -933,7 +973,7 @@ class RagdollDerbyGame {
     }
 
     const isSlowMo = this.manualSlowMo || this.autoSlowMoTimer > 0;
-    const timeScale = isSlowMo ? 0.22 : 1.0;
+    const timeScale = isSlowMo ? 0.22 : this.highlightPip.getTimeScale();
     const simDt = realDt * timeScale;
 
     if (this.phase === 'RACING') {
@@ -1027,6 +1067,16 @@ class RagdollDerbyGame {
       finishZ
     );
 
+    const leadZ = this.sortedRacers[0]?.getPosition().z ?? 0;
+    this.highlightPip.update(
+      realDt,
+      this.racers,
+      (z) => this.course.getTrackCenterX(z),
+      leadZ,
+      finishZ,
+      isSlowMo
+    );
+
     const tUiStart = performance.now();
     this.uiUpdateAccum += realDt;
     if (this.uiUpdateAccum >= 0.08) {
@@ -1036,6 +1086,7 @@ class RagdollDerbyGame {
 
     const tRenderStart = performance.now();
     this.renderer.render(this.scene, this.cameraDirector.camera);
+    this.highlightPip.render(this.renderer, this.scene);
     const tFrameEnd = performance.now();
 
     this.perfTelemetry.recordFrame(
