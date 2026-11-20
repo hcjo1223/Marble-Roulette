@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import type { RagdollRacer } from '../../entities/RagdollRacer';
 import type { ParticleSystem } from '../../effects/ParticleSystem';
 import type { SoundManager } from '../../audio/SoundManager';

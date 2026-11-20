@@ -12,25 +12,56 @@ interface BurstParticle {
 export class ParticleSystem {
   private scene: THREE.Scene;
   private particles: BurstParticle[] = [];
+  private pool: THREE.Mesh[] = [];
+  private matCache: Map<string, THREE.MeshBasicMaterial> = new Map();
   private boxGeo: THREE.BoxGeometry;
   private starGeo: THREE.OctahedronGeometry;
+  private maxParticles: number;
 
-  constructor(scene: THREE.Scene) {
+  constructor(scene: THREE.Scene, isMobile: boolean = false) {
     this.scene = scene;
     this.boxGeo = new THREE.BoxGeometry(0.24, 0.24, 0.24);
     this.starGeo = new THREE.OctahedronGeometry(0.22, 0);
+    this.maxParticles = isMobile ? 90 : 200;
+  }
+
+  private getMaterial(colorHex: string): THREE.MeshBasicMaterial {
+    let mat = this.matCache.get(colorHex);
+    if (!mat) {
+      mat = new THREE.MeshBasicMaterial({
+        color: new THREE.Color(colorHex),
+      });
+      this.matCache.set(colorHex, mat);
+    }
+    return mat;
+  }
+
+  private acquireMesh(useStar: boolean, mat: THREE.MeshBasicMaterial): THREE.Mesh {
+    const recycled = this.pool.pop();
+    if (recycled) {
+      recycled.geometry = useStar ? this.starGeo : this.boxGeo;
+      recycled.material = mat;
+      recycled.visible = true;
+      return recycled;
+    }
+    const mesh = new THREE.Mesh(useStar ? this.starGeo : this.boxGeo, mat);
+    mesh.frustumCulled = true;
+    return mesh;
+  }
+
+  private releaseMesh(mesh: THREE.Mesh): void {
+    this.scene.remove(mesh);
+    if (this.pool.length < this.maxParticles) {
+      this.pool.push(mesh);
+    }
   }
 
   public spawnHitBurst(position: THREE.Vector3, colorHex: string = '#f59e0b', count: number = 10): void {
-    const mat = new THREE.MeshStandardMaterial({
-      color: new THREE.Color(colorHex),
-      emissive: new THREE.Color(colorHex),
-      emissiveIntensity: 0.55,
-      roughness: 0.3,
-    });
+    const mat = this.getMaterial(colorHex);
+    const available = Math.max(2, Math.min(count, this.maxParticles - this.particles.length));
 
-    for (let i = 0; i < count; i++) {
-      const mesh = new THREE.Mesh(i % 2 === 0 ? this.starGeo : this.boxGeo, mat);
+    for (let i = 0; i < available; i++) {
+      const mesh = this.acquireMesh(i % 2 === 0, mat);
       mesh.position.copy(position);
       const scale = 0.65 + Math.random() * 0.75;
       mesh.scale.setScalar(scale);
@@ -62,7 +93,7 @@ export class ParticleSystem {
   }
 
   public spawnRespawnFlash(position: THREE.Vector3): void {
-    this.spawnHitBurst(position, '#38bdf8', 12);
+    this.spawnHitBurst(position, '#38bdf8', 10);
   }
 
   public update(dt: number): void {
@@ -70,7 +101,7 @@ export class ParticleSystem {
       const p = this.particles[i];
       p.life += dt;
       if (p.life >= p.maxLife) {
-        this.scene.remove(p.mesh);
+        this.releaseMesh(p.mesh);
         this.particles.splice(i, 1);
         continue;
       }
@@ -88,7 +119,7 @@ export class ParticleSystem {
 
   public clear(): void {
     for (const p of this.particles) {
-      this.scene.remove(p.mesh);
+      this.releaseMesh(p.mesh);
     }
     this.particles = [];
   }

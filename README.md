@@ -30,11 +30,21 @@
    - `🕹️ 자유/개인 포커스 (4)`: 우측 실시간 순위표에서 원하는 참가자 클릭 시 해당 캐릭터 단독 마크 + 마우스 회전/줌
    - `🎬 클라이맥스 슬로우 모션`: 당첨 결정 순위 참가자가 결승선 전방 `11.5m` 진입 시 자동으로 `0.22x` 슬로우 모션 + 시네마틱 줌인 + 레터박스 연출 발동 (`Space` 키로 수동 토글 가능)
 
-## 🚀 실행 방법
+## ✨ 최근 추가 · 개선된 기능
+
+- **수영장 2단계 기믹**: 물놀이 튜브 탑승 패드(`🛟`), 3D 파도 존 물살 밀림 & 대형 롤링 웨이브, 주기적 물대포 워터젯
+- **3D 맵 에디터 (`/ ?custom=`)**: 상단 `🛠️ 에디터` 버튼으로 11종의 장애물을 트랙에 직접 배치·미세조정(`Z`/`X`/방향/크기)하고 JSON 또는 URL 링크로 저장/공유
+- **폴가이즈 테마 결과 공유 카드**: 완주 즉시 결승선 3D 스크린샷과 우승자·포디움 정보를 담은 `1080×1350` PNG 카드 생성 및 저장/복사/공유
+- **사운드 & 관중 연출 확장**: 5개 맵 전용 멀티채널 BGM + 시작 호각·물보라·튜브 탑승·관중 환호/탄식 Web Audio 효과음 + `InstancedMesh` 경기장 관중석 애니메이션
+- **모바일 48인 물리·렌더링 최적화 & 프레임 측정기**: `lowCost` LOD 파이프라인, GPU 인스턴싱, `@dimforge/rapier3d` 외부 스트리밍 WASM 청크 분리 (`?perf=1` 또는 `📊 프레임 측정`)
+
+## 🚀 실행 및 배포 방법
 
 ```bash
 npm install
-npm run dev
+npm run dev       # 로컬 개발 서버
+npm run build     # TypeScript 검사 + Vite 프로덕션 번들 (dist/ 생성)
 ```
 
-상세 기획 및 시스템 아키텍처 문서는 [docs/PLAN_AND_DESIGN.md](./docs/PLAN_AND_DESIGN.md)에서 확인할 수 있습니다.
+- `main` 브랜치에 푸시하면 GitHub Actions([`.github/workflows/ci.yml`](./.github/workflows/ci.yml))가 `dist/`를 빌드해 `gh-pages`로 자동 배포합니다.
+- 수업 현장 피드백 기록 및 다음 단계 반영은 [docs/CLASSROOM_FEEDBACK.md](./docs/CLASSROOM_FEEDBACK.md), 상세 기획 문서는 [docs/PLAN_AND_DESIGN.md](./docs/PLAN_AND_DESIGN.md)에서 확인할 수 있습니다.

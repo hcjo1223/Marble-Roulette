@@ -1,10 +1,11 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import type { MapTheme, ParticipantEntry, RacerState } from '../types';
 import {
   type FaceMode,
   type RacerBuffState,
   createRacerVisuals,
+  createRideTubeAttachment,
   drawRacerBillboardLabel,
   drawRacerFaceTexture,
 } from './racerVisuals';
@@ -24,6 +25,7 @@ export class RagdollRacer {
   public readonly accentColor: string;
   public readonly isKartMode: boolean;
   public readonly isJellybean: boolean;
+  private readonly lowCostMode: boolean;
 
   public state: RacerState = 'WAITING';
   public rank: number = 1;
@@ -40,6 +42,8 @@ export class RagdollRacer {
   public rightArmBody: RAPIER.RigidBody;
   public leftLegBody: RAPIER.RigidBody;
   public rightLegBody: RAPIER.RigidBody;
+  private limbColliders: RAPIER.Collider[] = [];
+  private limbsCollisionEnabled: boolean = true;
 
   // Rapier Impulse Joints
   private neckJoint: RAPIER.SphericalImpulseJoint;
@@ -59,6 +63,7 @@ export class RagdollRacer {
   public selectionRing: THREE.Mesh;
   private kartWheels: THREE.Mesh[];
   private kartFlameMesh: THREE.Mesh | null;
+  private rideTubeGroup: THREE.Group | null = null;
 
   private faceCtx: CanvasRenderingContext2D;
   private faceTexture: THREE.CanvasTexture;
@@ -71,6 +76,7 @@ export class RagdollRacer {
   private lastRenderedState: RacerState = 'WAITING';
   private lastRenderedHighlight: boolean = false;
   private lastRenderedBuff: RacerBuffState = 'NONE';
+  private _cachedPos: THREE.Vector3;
 
   // Autonomous Steering & Randomness Parameters
   private baseSpeed: number;
@@ -90,6 +96,8 @@ export class RagdollRacer {
   private slowFactor: number = 1.0;
   private turboTimer: number = 0;
   private turboBonus: number = 0;
+  private tubeRideTimer: number = 0;
+  private waitingIdleTicks: number = 0;
 
   constructor(
     entry: ParticipantEntry,
@@ -97,7 +105,8 @@ export class RagdollRacer {
     spawnPos: THREE.Vector3,
     world: RAPIER.World,
     scene: THREE.Scene,
-    mapTheme: MapTheme = 'PLAYGROUND'
+    mapTheme: MapTheme = 'PLAYGROUND',
+    lowCostMode: boolean = false
   ) {
     this.id = entry.id;
     this.name = entry.name;
@@ -105,9 +114,11 @@ export class RagdollRacer {
     this.accentColor = entry.accentColor;
     this.isKartMode = mapTheme === 'DINOSAUR';
     this.isJellybean = mapTheme === 'FALLGUYS';
+    this.lowCostMode = lowCostMode;
     this.world = world;
     this.scene = scene;
     this.rank = index + 1;
+    this._cachedPos = spawnPos.clone();
 
     // Autonomous AI individual traits (Kart mode races substantially faster!)
     this.baseSpeed = this.isKartMode
@@ -129,7 +140,7 @@ export class RagdollRacer {
       .setTranslation(spawnPos.x, spawnPos.y, spawnPos.z)
       .setLinearDamping(0.65)
       .setAngularDamping(1.8)
-      .setCcdEnabled(true);
+      .setCcdEnabled(!lowCostMode);
     this.torsoBody = world.createRigidBody(torsoDesc);
 
     const torsoColDesc = RAPIER.ColliderDesc.cuboid(0.38, 0.42, 0.21)
@@ -159,7 +170,7 @@ export class RagdollRacer {
       .setRestitution(0.45)
       .setFriction(0.2)
       .setCollisionGroups(limbGroup);
-    world.createCollider(headCol, this.headBody);
+    this.limbColliders.push(world.createCollider(headCol, this.headBody));
 
     // 3. Left & Right Arm/Leg RigidBodies
     const createLimbBody = (offsetX: number, offsetY: number, hx: number, hy: number, hz: number) => {
@@ -173,7 +184,7 @@ export class RagdollRacer {
         .setRestitution(0.35)
         .setFriction(0.2)
         .setCollisionGroups(limbGroup);
-      world.createCollider(col, body);
+      this.limbColliders.push(world.createCollider(col, body));
       return body;
     };
 
@@ -181,6 +192,10 @@ export class RagdollRacer {
     this.rightArmBody = createLimbBody(0.56, 0.02, 0.15, 0.36, 0.15);
     this.leftLegBody = createLimbBody(-0.2, -0.72, 0.16, 0.34, 0.16);
     this.rightLegBody = createLimbBody(0.2, -0.72, 0.16, 0.34, 0.16);
+
+    if (lowCostMode) {
+      this.setLimbsCollisionEnabled(false);
+    }
 
     // 4. Create Rapier ImpulseJoints connecting R6 parts
     const neckData = RAPIER.JointData.spherical(
@@ -244,7 +259,7 @@ export class RagdollRacer {
     );
 
     // 5. Three.js Meshes, Skin, Kart/Pool/Taekwondo Outfit & Nameplate
-    const visuals = createRacerVisuals(scene, this.color, this.accentColor, mapTheme);
+    const visuals = createRacerVisuals(scene, this.color, this.accentColor, mapTheme, lowCostMode);
     this.torsoMesh = visuals.torsoMesh;
     this.headMesh = visuals.headMesh;
     this.leftArmMesh = visuals.leftArmMesh;
@@ -262,6 +277,15 @@ export class RagdollRacer {
 
     this.updateBillboardLabel(true);
     this.syncVisuals(false);
+  }
+
+  private setLimbsCollisionEnabled(enabled: boolean): void {
+    if (this.limbsCollisionEnabled === enabled) return;
+    this.limbsCollisionEnabled = enabled;
+    const groups = makeCollisionGroups(GROUP_LIMB, enabled ? GROUP_ENV : 0);
+    for (const col of this.limbColliders) {
+      col.setCollisionGroups(groups);
+    }
   }
 
   private drawFaceTexture(mode: FaceMode): void {
@@ -289,6 +313,67 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  public mountTube(colorHex: number = 0xff5fa2, duration: number = 5.6): boolean {
+    if (this.state === 'FINISHED' || this.state === 'RAGDOLL') return false;
+    if (this.tubeRideTimer > 0.6) return false;
+    this.tubeRideTimer = duration;
+    this.slowDebuffTimer = 0;
+    this.slowFactor = 1.0;
+
+    if (!this.rideTubeGroup) {
+      this.rideTubeGroup = createRideTubeAttachment(colorHex);
+      this.torsoMesh.add(this.rideTubeGroup);
+    } else {
+      this.rideTubeGroup.visible = true;
+    }
+
+    this.torsoBody.applyImpulse({ x: 0, y: 4.5, z: 10 }, true);
+    this.updateBillboardLabel();
+    return true;
+  }
+
+  public dismountTube(): void {
+    if (this.tubeRideTimer <= 0 && (!this.rideTubeGroup || !this.rideTubeGroup.visible)) return;
+    this.tubeRideTimer = 0;
+    if (this.rideTubeGroup) {
+      this.rideTubeGroup.visible = false;
+    }
+    this.updateBillboardLabel();
+  }
+
+  public isRidingTube(): boolean {
+    return this.tubeRideTimer > 0;
+  }
+
+  public applyWavePush(forceX: number, forceZ: number, isBigWave: boolean): void {
+    if (this.state === 'FINISHED') return;
+    if (this.isRidingTube()) {
+      // Tube riders glide/surf high over waves with reduced sideways knockback
+      this.torsoBody.applyImpulse(
+        {
+          x: forceX * 0.4,
+          y: isBigWave ? 11.5 : 0,
+          z: isBigWave ? 7.0 : forceZ * 0.45,
+        },
+        true
+      );
+      return;
+    }
+    if (isBigWave) {
+      this.triggerRagdoll(
+        {
+          x: forceX * 0.72 + (Math.random() - 0.5) * 6,
+          y: 17 + Math.random() * 5,
+          z: forceZ * 0.5 - 4,
+        },
+        undefined,
+        1.05
+      );
+    } else {
+      this.torsoBody.applyImpulse({ x: forceX, y: 0, z: forceZ }, true);
+    }
+  }
+
   public isSlowed(): boolean {
     return this.slowDebuffTimer > 0;
   }
@@ -299,7 +384,13 @@ export class RagdollRacer {
 
   public updateBillboardLabel(force: boolean = false): void {
     const buffState: RacerBuffState =
-      this.slowDebuffTimer > 0 ? 'SLOW' : this.turboTimer > 0 ? 'TURBO' : 'NONE';
+      this.tubeRideTimer > 0
+        ? 'TUBE'
+        : this.slowDebuffTimer > 0
+        ? 'SLOW'
+        : this.turboTimer > 0
+        ? 'TURBO'
+        : 'NONE';
     if (
       !force &&
       this.lastRenderedRank === this.rank &&
@@ -324,9 +415,14 @@ export class RagdollRacer {
     });
   }
 
-  public getPosition(): THREE.Vector3 {
+  public refreshCachedPosition(): THREE.Vector3 {
     const t = this.torsoBody.translation();
-    return new THREE.Vector3(t.x, t.y, t.z);
+    this._cachedPos.set(t.x, t.y, t.z);
+    return this._cachedPos;
+  }
+
+  public getPosition(): THREE.Vector3 {
+    return this._cachedPos;
   }
 
   public triggerRagdoll(
@@ -335,6 +431,11 @@ export class RagdollRacer {
     duration: number = 1.25
   ): void {
     if (this.state === 'FINISHED') return;
+
+    this.dismountTube();
+    if (this.lowCostMode) {
+      this.setLimbsCollisionEnabled(true);
+    }
 
     if (this.state !== 'RAGDOLL') {
       this.ragdollCount++;
@@ -401,13 +502,18 @@ export class RagdollRacer {
     resetBody(this.rightArmBody, 0.56, 0.02, 0);
     resetBody(this.leftLegBody, -0.2, -0.72, 0);
     resetBody(this.rightLegBody, 0.2, -0.72, 0);
+    this._cachedPos.copy(pos);
 
     this.state = 'RUNNING';
+    if (this.lowCostMode) {
+      this.setLimbsCollisionEnabled(false);
+    }
     this.ragdollTimer = 0;
     this.slowDebuffTimer = 0;
     this.slowFactor = 1.0;
     this.turboTimer = 0;
     this.turboBonus = 0;
+    this.dismountTube();
     this.drawFaceTexture('NORMAL');
     this.updateBillboardLabel();
   }
@@ -424,6 +530,7 @@ export class RagdollRacer {
   ): void {
     this.elapsedTime += dt;
     const pos = this.torsoBody.translation();
+    this._cachedPos.set(pos.x, pos.y, pos.z);
     const vel = this.torsoBody.linvel();
 
     if (this.slowDebuffTimer > 0) {
@@ -436,6 +543,15 @@ export class RagdollRacer {
       this.turboTimer = Math.max(0, this.turboTimer - dt);
       if (this.turboTimer === 0) {
         this.turboBonus = 0;
+      }
+    }
+    if (this.tubeRideTimer > 0) {
+      this.tubeRideTimer = Math.max(0, this.tubeRideTimer - dt);
+      if (this.rideTubeGroup && this.rideTubeGroup.visible) {
+        this.rideTubeGroup.position.y = -0.32 + Math.sin(this.elapsedTime * 8.5) * 0.06;
+      }
+      if (this.tubeRideTimer === 0) {
+        this.dismountTube();
       }
     }
 
@@ -455,7 +571,10 @@ export class RagdollRacer {
     }
 
     if (this.state === 'WAITING') {
-      this.maintainUprightPose(0, dt, 0.4);
+      this.waitingIdleTicks++;
+      if (!this.lowCostMode || this.waitingIdleTicks < 8 || this.waitingIdleTicks % 4 === 0) {
+        this.maintainUprightPose(0, dt, 0.4);
+      }
       return;
     }
 
@@ -526,6 +645,9 @@ export class RagdollRacer {
       if (this.ragdollTimer <= 0) {
         this.state = 'RECOVERING';
         this.recoverTimer = 0.42;
+        if (this.lowCostMode) {
+          this.setLimbsCollisionEnabled(false);
+        }
         this.drawFaceTexture('NORMAL');
         this.updateBillboardLabel();
       }
@@ -559,7 +681,7 @@ export class RagdollRacer {
     const rankRatio = totalRacers > 1 ? (this.rank - 1) / (totalRacers - 1) : 0;
     const comebackMultiplier = 1.0 + rankRatio * 0.19;
     const activeSlow = this.slowDebuffTimer > 0 ? this.slowFactor : 1.0;
-    const activeTurbo = this.turboTimer > 0 ? this.turboBonus : 0;
+    const activeTurbo = (this.turboTimer > 0 ? this.turboBonus : 0) + (this.tubeRideTimer > 0 ? 4.3 : 0);
     const desiredForwardSpeed = (this.baseSpeed * comebackMultiplier + activeTurbo) * activeSlow;
     const maxLat = this.isKartMode ? 11.0 : 8.0;
     const desiredLateralSpeed = Math.max(
@@ -608,6 +730,7 @@ export class RagdollRacer {
         { x: pos.x, y: expectedFloorY + 1.15, z: pos.z },
         true
       );
+      this._cachedPos.set(pos.x, expectedFloorY + 1.15, pos.z);
       if (vel.y < 0) {
         this.torsoBody.setLinvel({ x: vel.x, y: 2.5, z: vel.z }, true);
       }
@@ -733,6 +856,10 @@ export class RagdollRacer {
     this.state = 'FINISHED';
     this.finishOrder = order;
     this.finishTime = timeSec;
+    this.dismountTube();
+    if (this.lowCostMode) {
+      this.setLimbsCollisionEnabled(false);
+    }
     this.drawFaceTexture('WINNER');
     this.updateBillboardLabel(true);
   }
@@ -746,28 +873,33 @@ export class RagdollRacer {
     };
 
     const torsoPos = this.torsoBody.translation();
+    this._cachedPos.set(torsoPos.x, torsoPos.y, torsoPos.z);
 
     // Safety leash: if an extreme solver spike separates a limb > 2.2m, snap it back
-    const guardLimb = (body: RAPIER.RigidBody, ox: number, oy: number, oz: number) => {
-      const lp = body.translation();
-      const distSq =
-        (lp.x - torsoPos.x) ** 2 + (lp.y - torsoPos.y) ** 2 + (lp.z - torsoPos.z) ** 2;
-      if (distSq > 4.8 || Number.isNaN(lp.x)) {
-        body.setTranslation(
-          { x: torsoPos.x + ox, y: torsoPos.y + oy, z: torsoPos.z + oz },
-          true
-        );
-        body.setLinvel(this.torsoBody.linvel(), true);
-      }
-    };
+    if (!this.lowCostMode || this.state === 'RAGDOLL' || this.state === 'RECOVERING') {
+      const guardLimb = (body: RAPIER.RigidBody, ox: number, oy: number, oz: number) => {
+        const lp = body.translation();
+        const distSq =
+          (lp.x - torsoPos.x) ** 2 + (lp.y - torsoPos.y) ** 2 + (lp.z - torsoPos.z) ** 2;
+        if (distSq > 4.8 || Number.isNaN(lp.x)) {
+          body.setTranslation(
+            { x: torsoPos.x + ox, y: torsoPos.y + oy, z: torsoPos.z + oz },
+            true
+          );
+          body.setLinvel(this.torsoBody.linvel(), true);
+        }
+      };
 
-    guardLimb(this.headBody, 0, 0.76, 0);
-    guardLimb(this.leftArmBody, -0.56, 0.02, 0);
-    guardLimb(this.rightArmBody, 0.56, 0.02, 0);
-    guardLimb(this.leftLegBody, -0.2, -0.72, 0);
-    guardLimb(this.rightLegBody, 0.2, -0.72, 0);
+      guardLimb(this.headBody, 0, 0.76, 0);
+      guardLimb(this.leftArmBody, -0.56, 0.02, 0);
+      guardLimb(this.rightArmBody, 0.56, 0.02, 0);
+      guardLimb(this.leftLegBody, -0.2, -0.72, 0);
+      guardLimb(this.rightLegBody, 0.2, -0.72, 0);
+    }
 
-    syncMeshToBody(this.torsoMesh, this.torsoBody);
+    const torsoRot = this.torsoBody.rotation();
+    this.torsoMesh.position.set(torsoPos.x, torsoPos.y, torsoPos.z);
+    this.torsoMesh.quaternion.set(torsoRot.x, torsoRot.y, torsoRot.z, torsoRot.w);
     syncMeshToBody(this.headMesh, this.headBody);
     syncMeshToBody(this.leftArmMesh, this.leftArmBody);
     syncMeshToBody(this.rightArmMesh, this.rightArmBody);

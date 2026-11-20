@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
 
 export interface BossCharacterParts {
   root: THREE.Group;
@@ -22,9 +21,10 @@ function loadGlbTemplate(glbPath: string): Promise<THREE.Group | null> {
     return existingPromise;
   }
 
-  const loader = new GLTFLoader();
   const promise = (async (): Promise<THREE.Group | null> => {
     try {
+      const { GLTFLoader } = await import('three/examples/jsm/loaders/GLTFLoader.js');
+      const loader = new GLTFLoader();
       const res = await fetch(glbPath);
       if (!res.ok) {
         bossGlbTemplates.set(glbPath, null);

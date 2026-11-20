@@ -83,11 +83,11 @@ export function getZoneLabelAtZ(z: number, mapTheme: MapTheme, finishZ: number):
     return '🏆 정글 탈출 성공';
   }
   if (mapTheme === 'POOL') {
-    if (z < 42) return '🎢 워터슬라이드';
-    if (z < 66) return '🛟 튜브 범퍼 슬라럼';
+    if (z < 42) return '🎢 워터슬라이드 · 튜브 탑승';
+    if (z < 66) return '🛟 튜브 슬라럼';
     if (z < 82) return '💧 물벼락 낙하 존';
-    if (z < 100) return '🌊 물살 컨베이어';
-    if (z < finishZ) return '🏄 빅웨이브 풀';
+    if (z < 100) return '🌊 물살 컨베이어 · 대포';
+    if (z < finishZ) return '🏄 파도 물살 밀림 풀';
     return '🏁 수영장 완주!';
   }
   if (mapTheme === 'FALLGUYS') {

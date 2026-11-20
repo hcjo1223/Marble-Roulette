@@ -91,6 +91,12 @@ body.theme-fallguys .pill-btn.primary-pill {
   box-shadow: 0 5px 0 var(--fg-cyan-deep), 0 10px 16px rgba(16, 174, 189, 0.22);
 }
 
+body.theme-fallguys .pill-btn.editor-pill {
+  background: var(--fg-lav);
+  color: #ffffff;
+  box-shadow: 0 5px 0 var(--fg-lav-deep), 0 10px 16px rgba(139, 92, 246, 0.22);
+}
+
 body.theme-fallguys .pill-btn.start-pill,
 body.theme-fallguys .primary-cta-btn {
   background: var(--fg-lemon);
