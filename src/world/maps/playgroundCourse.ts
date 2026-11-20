@@ -215,5 +215,4 @@ function buildZone4Pendulums(ctx: CourseBuildContext, shared: SharedObstacleSyst
     ],
     false
   );
-  shared.createSweeper(126, 0, 5.2, 4.0, 2, 0x3b82f6);
 }

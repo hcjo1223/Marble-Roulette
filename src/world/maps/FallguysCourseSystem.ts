@@ -4,15 +4,16 @@ import type { RagdollRacer } from '../../entities/RagdollRacer';
 import type { ParticleSystem } from '../../effects/ParticleSystem';
 import type { SoundManager } from '../../audio/SoundManager';
 import {
+  TRACK_SLOPE,
   envCollisionGroup,
   getTrackCenterX,
   getTrackHeightAtZ,
   getTrackYawAtZ,
 } from '../courseMath';
-import { createCurvedFloorStripGeometry, createSlimeTexture } from '../courseTextures';
 import type {
   CourseBuildContext,
   FallguysCushionData,
+  FallguysDisappearingTileData,
   FallguysPistonData,
   FallguysPunchWallData,
 } from '../courseTypes';
@@ -25,6 +26,7 @@ export class FallguysCourseSystem {
   private fallguysCushions: FallguysCushionData[] = [];
   private fallguysPunchWalls: FallguysPunchWallData[] = [];
   private fallguysPistons: FallguysPistonData[] = [];
+  private disappearingTiles: FallguysDisappearingTileData[] = [];
 
   constructor(ctx: CourseBuildContext, shared: SharedObstacleSystem) {
     this.ctx = ctx;
@@ -139,7 +141,7 @@ export class FallguysCourseSystem {
     this.buildAirCushionZone();
     this.buildSweeperZone();
     this.buildPunchZone();
-    this.buildSlimeRamp();
+    this.buildDisappearingFloor();
     this.buildCrownArch();
   }
 
@@ -247,23 +249,24 @@ export class FallguysCourseSystem {
   private buildSweeperZone(): void {
     const isLight = this.ctx.obstacleDensity === 'LIGHT';
     if (isLight) {
-      this.shared.createSweeper(53, 0, 7.2, 2.4, 2, 0xff5fa2);
+      this.shared.createSweeper(53, 0, 5.6, 2.4, 2, 0xff5fa2);
       return;
     }
-    this.shared.createSweeper(47, 0, 7.6, 2.6, 2, 0xff5fa2);
-    this.shared.createSweeper(57, 0, 8.2, -2.2, 2, 0x5ee7c7);
-    this.shared.createSweeper(66, 0, 7.4, 3.0, 3, 0xffe45c);
+    // 세 회전 함정이 서로 겹치지 않도록 반경을 분리하고 가운데(Z=57) 크기를 컴팩트하게 축소
+    this.shared.createSweeper(47, 0, 5.2, 2.6, 2, 0xff5fa2);
+    this.shared.createSweeper(57, 0, 3.9, -2.5, 3, 0x5ee7c7);
+    this.shared.createSweeper(66, 0, 4.7, 3.0, 3, 0xffe45c);
   }
 
   private buildPunchZone(): void {
     const isLight = this.ctx.obstacleDensity === 'LIGHT';
 
     const wallSpecs = isLight
-      ? [{ z: 84, ampX: 3.2, freq: 1.15, phase: 0 }]
+      ? [{ z: 84, ampX: 4.1, freq: 1.45, phase: 0 }]
       : [
-          { z: 78, ampX: 3.4, freq: 1.15, phase: 0 },
-          { z: 88, ampX: 3.8, freq: 1.35, phase: Math.PI },
-          { z: 98, ampX: 3.2, freq: 1.5, phase: 1.2 },
+          { z: 78, ampX: 4.2, freq: 1.5, phase: 0 },
+          { z: 88, ampX: 4.5, freq: 1.7, phase: Math.PI },
+          { z: 98, ampX: 4.0, freq: 1.85, phase: 1.2 },
         ];
     const wallColors = [0xff8cc0, 0x6fe7c8, 0xffe066];
     const halfWallW = 2.4;
@@ -281,13 +284,13 @@ export class FallguysCourseSystem {
     const pistonSpecs = isLight
       ? [
           { z: 74, side: -1, phase: 0 },
-          { z: 95, side: 1, phase: Math.PI },
+          { z: 94, side: 1, phase: Math.PI },
         ]
       : [
           { z: 74, side: -1, phase: 0 },
           { z: 74, side: 1, phase: Math.PI },
-          { z: 94, side: -1, phase: 1.4 },
-          { z: 94, side: 1, phase: 4.2 },
+          { z: 93, side: -1, phase: Math.PI },
+          { z: 93, side: 1, phase: 0 },
         ];
     for (const spec of pistonSpecs) {
       this.createPiston(spec.z, spec.side, spec.phase);
@@ -304,8 +307,8 @@ export class FallguysCourseSystem {
   ): void {
     const cx = getTrackCenterX(z);
     const halfW = halfWallWidth;
-    const halfH = 1.15;
-    const halfD = 0.55;
+    const halfH = 1.2;
+    const halfD = 0.6;
     const y = getTrackHeightAtZ(z) + halfH + 0.06;
     const initX = cx + Math.sin(phase) * ampX;
 
@@ -316,9 +319,9 @@ export class FallguysCourseSystem {
       new THREE.BoxGeometry(halfW * 2, halfH * 2, halfD * 2),
       new THREE.MeshPhysicalMaterial({
         color: colorHex,
-        roughness: 0.3,
-        clearcoat: 0.35,
-        clearcoatRoughness: 0.25,
+        roughness: 0.28,
+        clearcoat: 0.4,
+        clearcoatRoughness: 0.2,
       })
     );
     pad.castShadow = true;
@@ -332,13 +335,13 @@ export class FallguysCourseSystem {
 
     const ballMat = new THREE.MeshPhysicalMaterial({
       color: 0xffffff,
-      roughness: 0.18,
+      roughness: 0.16,
       clearcoat: 1.0,
       clearcoatRoughness: 0.06,
     });
     for (const bx of [-halfW * 0.6, 0, halfW * 0.6]) {
-      const balloon = new THREE.Mesh(new THREE.SphereGeometry(0.62, 16, 12), ballMat);
-      balloon.position.set(bx, 0.12, halfD + 0.3);
+      const balloon = new THREE.Mesh(new THREE.SphereGeometry(0.68, 16, 12), ballMat);
+      balloon.position.set(bx, 0.12, halfD + 0.32);
       balloon.castShadow = true;
       group.add(balloon);
     }
@@ -350,7 +353,7 @@ export class FallguysCourseSystem {
     );
     this.ctx.world.createCollider(
       RAPIER.ColliderDesc.cuboid(halfW, halfH, halfD)
-        .setRestitution(1.15)
+        .setRestitution(1.25)
         .setFriction(0.05)
         .setCollisionGroups(envCollisionGroup()),
       body
@@ -374,39 +377,52 @@ export class FallguysCourseSystem {
 
   private createPiston(z: number, side: number, phase: number): void {
     const cx = getTrackCenterX(z);
-    const halfW = 1.0;
-    const halfH = 1.0;
-    const halfD = 0.55;
+    const halfW = 1.25;
+    const halfH = 1.25;
+    const halfD = 0.62;
     const baseY = getTrackHeightAtZ(z) + halfH + 0.05;
-    const restX = cx + side * (9.0 - halfW);
+    const restX = cx + side * (9.0 - halfD);
 
     const group = new THREE.Group();
     group.position.set(restX, baseY, z);
 
     const shaft = new THREE.Mesh(
-      new THREE.CylinderGeometry(0.4, 0.4, 3.4, 14),
-      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.35, metalness: 0.35 })
+      new THREE.CylinderGeometry(0.42, 0.42, 6.2, 14),
+      new THREE.MeshStandardMaterial({ color: 0xe2e8f0, roughness: 0.32, metalness: 0.4 })
     );
     shaft.rotation.z = Math.PI / 2;
-    shaft.position.set(-side * 1.7, 0, 0);
+    shaft.position.set(side * 3.1, 0, 0);
     group.add(shaft);
 
     const pad = new THREE.Mesh(
       new THREE.CylinderGeometry(halfH, halfH, halfD * 2, 20),
       new THREE.MeshPhysicalMaterial({
-        color: 0xff6fb5,
-        roughness: 0.28,
-        clearcoat: 0.6,
-        clearcoatRoughness: 0.2,
+        color: 0xff5fa2,
+        roughness: 0.25,
+        clearcoat: 0.7,
+        clearcoatRoughness: 0.15,
       })
     );
     pad.rotation.z = Math.PI / 2;
     pad.castShadow = true;
     group.add(pad);
 
+    const gloveCap = new THREE.Mesh(
+      new THREE.SphereGeometry(halfH * 0.92, 16, 12),
+      new THREE.MeshStandardMaterial({
+        color: 0xffe066,
+        emissive: 0xf59e0b,
+        emissiveIntensity: 0.22,
+        roughness: 0.22,
+      })
+    );
+    gloveCap.scale.set(0.55, 1.0, 1.0);
+    gloveCap.position.set(-side * (halfD * 0.85), 0, 0);
+    group.add(gloveCap);
+
     const ring = new THREE.Mesh(
-      new THREE.TorusGeometry(halfH * 0.72, 0.1, 8, 20),
-      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.4 })
+      new THREE.TorusGeometry(halfH * 0.78, 0.12, 8, 20),
+      new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
     );
     ring.rotation.y = Math.PI / 2;
     ring.position.set(-side * (halfD - 0.02), 0, 0);
@@ -420,7 +436,7 @@ export class FallguysCourseSystem {
     this.ctx.world.createCollider(
       RAPIER.ColliderDesc.cylinder(halfD, halfH)
         .setRotation({ x: 0, y: 0, z: 0.7071, w: 0.7071 })
-        .setRestitution(1.1)
+        .setRestitution(1.3)
         .setCollisionGroups(envCollisionGroup()),
       body
     );
@@ -432,9 +448,9 @@ export class FallguysCourseSystem {
       side,
       baseY,
       restX,
-      stroke: 2.0,
+      stroke: 3.8,
       phase,
-      freq: 1.55,
+      freq: 2.05,
       halfW,
       halfH,
       halfD,
@@ -442,59 +458,87 @@ export class FallguysCourseSystem {
     });
   }
 
-  /** 슬라임 가속 경사: 밟으면 결승까지 미끄러지듯 가속되는 초록 젤리 램프 */
-  private buildSlimeRamp(): void {
-    const zMin = 104;
-    const zMax = 119;
-    const tex = createSlimeTexture();
-    tex.repeat.set(1, (zMax - zMin) * 0.5);
-
-    const geo = createCurvedFloorStripGeometry(zMin, zMax, -8.6, 8.6, 0.11, 12);
-    const mesh = new THREE.Mesh(
-      geo,
-      new THREE.MeshPhysicalMaterial({
-        map: tex,
-        color: 0xb6ff9e,
-        roughness: 0.12,
-        metalness: 0.05,
-        clearcoat: 1.0,
-        clearcoatRoughness: 0.06,
-        transparent: true,
-        opacity: 0.94,
-        side: THREE.DoubleSide,
-        polygonOffset: true,
-        polygonOffsetFactor: -2,
-        polygonOffsetUnits: -2,
-      })
+  /** 사라지는 바닥 (Hex-A-Gone): 밟으면 깜빡이며 3초 뒤 사라지고, 1.5초 뒤 재생성 */
+  private buildDisappearingFloor(): void {
+    const rowZCenters = [106, 110, 114, 118];
+    const colOffsets = [-7.3, -3.65, 0, 3.65, 7.3];
+    const halfW = 1.76;
+    const halfH = 0.24;
+    const halfD = 1.94;
+    const tilePalette = [0xff6fb5, 0x5ee7c7, 0xffe066, 0x7cc9ff, 0xc9a3ff];
+    const envGroup = envCollisionGroup();
+    const coplanarQuat = new THREE.Quaternion().setFromEuler(
+      new THREE.Euler(TRACK_SLOPE, 0, 0)
     );
-    this.ctx.courseGroup.add(mesh);
 
-    this.shared.conveyors.push({
-      zMin,
-      zMax,
-      sideOffsetMin: -8.6,
-      sideOffsetMax: 8.6,
-      speedZ: 15.5,
-      texture: tex,
-    });
+    rowZCenters.forEach((zc, rowIdx) => {
+      const cx = getTrackCenterX(zc);
+      const centerY = getTrackHeightAtZ(zc) - halfH;
 
-    // 램프 양옆 슬라임 방울
-    const blobMat = new THREE.MeshPhysicalMaterial({
-      color: 0x8ef57f,
-      roughness: 0.15,
-      transparent: true,
-      opacity: 0.9,
-      clearcoat: 1.0,
+      colOffsets.forEach((offX, colIdx) => {
+        const wx = cx + offX;
+        const wz = zc;
+        const baseColorHex = tilePalette[(rowIdx * 2 + colIdx) % tilePalette.length];
+
+        const material = new THREE.MeshStandardMaterial({
+          color: baseColorHex,
+          emissive: baseColorHex,
+          emissiveIntensity: 0.14,
+          roughness: 0.26,
+          metalness: 0.08,
+        });
+        const mesh = new THREE.Mesh(
+          new THREE.BoxGeometry(halfW * 2, halfH * 2, halfD * 2),
+          material
+        );
+        mesh.position.set(wx, centerY, wz);
+        mesh.quaternion.copy(coplanarQuat);
+        mesh.receiveShadow = true;
+
+        // 흰색 파스텔 테두리 프레임으로 개별 발판 구분감 강조
+        const trim = new THREE.Mesh(
+          new THREE.BoxGeometry(halfW * 2 + 0.06, 0.08, halfD * 2 + 0.06),
+          new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.35 })
+        );
+        trim.position.y = halfH - 0.03;
+        mesh.add(trim);
+
+        this.ctx.courseGroup.add(mesh);
+
+        const body = this.ctx.createBody(
+          RAPIER.RigidBodyDesc.fixed()
+            .setTranslation(wx, centerY, wz)
+            .setRotation({
+              x: coplanarQuat.x,
+              y: coplanarQuat.y,
+              z: coplanarQuat.z,
+              w: coplanarQuat.w,
+            })
+        );
+        const collider = this.ctx.world.createCollider(
+          RAPIER.ColliderDesc.cuboid(halfW, halfH, halfD)
+            .setFriction(0.08)
+            .setRestitution(0.18)
+            .setCollisionGroups(envGroup),
+          body
+        );
+
+        this.disappearingTiles.push({
+          mesh,
+          material,
+          collider,
+          baseColorHex,
+          centerX: wx,
+          centerY,
+          centerZ: wz,
+          halfW,
+          halfD,
+          state: 'SOLID',
+          timer: 0,
+          spawnAnimTimer: 0,
+        });
+      });
     });
-    for (let z = zMin + 2; z <= zMax; z += 3.5) {
-      const cx = getTrackCenterX(z);
-      for (const side of [-1, 1]) {
-        const blob = new THREE.Mesh(new THREE.SphereGeometry(0.62, 12, 10), blobMat);
-        blob.position.set(cx + side * 7.4, getTrackHeightAtZ(z) + 0.3, z);
-        blob.scale.set(1.5, 0.55, 1.2);
-        this.ctx.courseGroup.add(blob);
-      }
-    }
   }
 
   /** 결승 아치 위에 얹는 거대 황금 왕관 */
@@ -564,6 +608,18 @@ export class FallguysCourseSystem {
     for (const piston of this.fallguysPistons) {
       piston.hitCooldowns.clear();
     }
+    for (const tile of this.disappearingTiles) {
+      tile.state = 'SOLID';
+      tile.timer = 0;
+      tile.spawnAnimTimer = 0;
+      tile.collider.setEnabled(true);
+      tile.mesh.visible = true;
+      tile.mesh.position.set(tile.centerX, tile.centerY, tile.centerZ);
+      tile.mesh.scale.setScalar(1);
+      tile.material.color.setHex(tile.baseColorHex);
+      tile.material.emissive.setHex(tile.baseColorHex);
+      tile.material.emissiveIntensity = 0.14;
+    }
   }
 
   public update(
@@ -577,7 +633,8 @@ export class FallguysCourseSystem {
     if (
       this.fallguysCushions.length === 0 &&
       this.fallguysPunchWalls.length === 0 &&
-      this.fallguysPistons.length === 0
+      this.fallguysPistons.length === 0 &&
+      this.disappearingTiles.length === 0
     ) {
       return;
     }
@@ -626,62 +683,138 @@ export class FallguysCourseSystem {
       for (const r of racers) {
         if (r.state === 'FINISHED') continue;
         const lastHit = wall.hitCooldowns.get(r.id) || 0;
-        if (elapsedTime - lastHit < 0.55) continue;
+        if (elapsedTime - lastHit < 0.9) continue;
 
         const rPos = r.getPosition();
         if (
-          Math.abs(rPos.x - curX) < wall.halfW + 0.6 &&
-          Math.abs(rPos.z - wall.baseZ) < wall.halfD + 0.9 &&
-          Math.abs(rPos.y - wall.baseY) < wall.halfH + 1.0
+          Math.abs(rPos.x - curX) < wall.halfW + 0.72 &&
+          Math.abs(rPos.z - wall.baseZ) < wall.halfD + 0.95 &&
+          Math.abs(rPos.y - wall.baseY) < wall.halfH + 1.15
         ) {
           wall.hitCooldowns.set(r.id, elapsedTime);
           const pushDirX = Math.abs(vx) > 0.0004 ? Math.sign(vx) : rPos.x >= curX ? 1 : -1;
           r.triggerRagdoll(
             {
-              x: pushDirX * 32 + (Math.random() - 0.5) * 8,
-              y: 19 + Math.random() * 8,
-              z: -6 + Math.random() * 10,
+              x: pushDirX * 36 + (Math.random() - 0.5) * 6,
+              y: 19 + Math.random() * 6,
+              z: -1.5 + Math.random() * 6,
             },
             undefined,
-            1.05
+            0.85
           );
-          particles.spawnHitBurst(rPos, '#ff8cc0', 10);
-          sound.playRagdollHit(1.05);
+          particles.spawnHitBurst(rPos, '#ff6fb5', 14);
+          sound.playBumperBounce();
+          sound.playRagdollHit(1.3);
         }
       }
     }
 
-    // 3) 양옆에서 쑥 들어오는 피스톤 펀치
+    // 3) 양옆에서 강하게 펀치하는 대형 피스톤
     for (const piston of this.fallguysPistons) {
-      const extend = Math.max(0, Math.sin(elapsedTime * piston.freq + piston.phase));
+      const raw = Math.sin(elapsedTime * piston.freq + piston.phase);
+      const extend = raw > 0 ? Math.pow(raw, 0.36) : 0;
       const curX = piston.restX - piston.side * piston.stroke * extend;
       piston.mesh.position.set(curX, piston.baseY, piston.z);
       piston.body.setNextKinematicTranslation({ x: curX, y: piston.baseY, z: piston.z });
 
-      if (!isRacing || extend < 0.28) continue;
+      if (!isRacing || extend < 0.12) continue;
       for (const r of racers) {
         if (r.state === 'FINISHED') continue;
         const lastHit = piston.hitCooldowns.get(r.id) || 0;
-        if (elapsedTime - lastHit < 0.6) continue;
+        if (elapsedTime - lastHit < 0.9) continue;
 
         const rPos = r.getPosition();
         if (
-          Math.abs(rPos.x - curX) < piston.halfD + 0.75 &&
-          Math.abs(rPos.z - piston.z) < piston.halfW + 0.8 &&
-          Math.abs(rPos.y - piston.baseY) < piston.halfH + 1.0
+          Math.abs(rPos.x - curX) < piston.halfD + 0.9 &&
+          Math.abs(rPos.z - piston.z) < piston.halfW + 0.95 &&
+          Math.abs(rPos.y - piston.baseY) < piston.halfH + 1.2
         ) {
           piston.hitCooldowns.set(r.id, elapsedTime);
           r.triggerRagdoll(
             {
-              x: -piston.side * 34 + (Math.random() - 0.5) * 8,
-              y: 18 + Math.random() * 7,
-              z: 4,
+              x: -piston.side * 40 + (Math.random() - 0.5) * 6,
+              y: 19 + Math.random() * 6,
+              z: 1.5 + (Math.random() - 0.5) * 5,
             },
             undefined,
-            1.0
+            0.85
           );
-          particles.spawnHitBurst(rPos, '#ffd93d', 9);
-          sound.playRagdollHit(1.0);
+          particles.spawnHitBurst(rPos, '#ffd93d', 14);
+          sound.playBumperBounce();
+          sound.playRagdollHit(1.4);
+        }
+      }
+    }
+
+    // 4) 사라지는 바닥: 밟으면 깜빡이며 3초 뒤 사라짐, 1.5초 뒤 재생성
+    for (const tile of this.disappearingTiles) {
+      if (tile.spawnAnimTimer > 0) {
+        tile.spawnAnimTimer = Math.max(0, tile.spawnAnimTimer - dt);
+        const s = 1 - tile.spawnAnimTimer / 0.25;
+        tile.mesh.scale.setScalar(0.35 + 0.65 * s);
+      }
+
+      if (tile.state === 'GONE') {
+        tile.timer -= dt;
+        if (tile.timer <= 0) {
+          tile.state = 'SOLID';
+          tile.timer = 0;
+          tile.spawnAnimTimer = 0.25;
+          tile.collider.setEnabled(true);
+          tile.mesh.visible = true;
+          tile.mesh.position.set(tile.centerX, tile.centerY, tile.centerZ);
+          tile.mesh.scale.setScalar(0.35);
+          tile.material.color.setHex(tile.baseColorHex);
+          tile.material.emissive.setHex(tile.baseColorHex);
+          tile.material.emissiveIntensity = 0.14;
+        }
+        continue;
+      }
+
+      if (tile.state === 'BLINKING') {
+        tile.timer -= dt;
+        const progress = Math.min(1, Math.max(0, 1 - tile.timer / 3.0));
+        const blinkFreq = 7.5 + progress * 18.0;
+        const flashOn = Math.sin(elapsedTime * blinkFreq) > 0;
+        if (flashOn) {
+          tile.material.color.setHex(0xff4d6d);
+          tile.material.emissive.setHex(0xff9f1c);
+          tile.material.emissiveIntensity = 0.95;
+        } else {
+          tile.material.color.setHex(0xffffff);
+          tile.material.emissive.setHex(tile.baseColorHex);
+          tile.material.emissiveIntensity = 0.3;
+        }
+        tile.mesh.position.y = tile.centerY - progress * 0.1;
+
+        if (tile.timer <= 0) {
+          tile.state = 'GONE';
+          tile.timer = 1.5;
+          tile.mesh.visible = false;
+          tile.collider.setEnabled(false);
+          particles.spawnHitBurst(
+            new THREE.Vector3(tile.centerX, tile.centerY + 0.35, tile.centerZ),
+            '#ffe066',
+            8
+          );
+        }
+        continue;
+      }
+
+      // state === 'SOLID': 레이서가 밟으면 3초 경고 카운트다운 시작
+      if (!isRacing) continue;
+      for (const r of racers) {
+        if (r.state === 'FINISHED') continue;
+        const rPos = r.getPosition();
+        if (
+          Math.abs(rPos.x - tile.centerX) <= tile.halfW + 0.4 &&
+          Math.abs(rPos.z - tile.centerZ) <= tile.halfD + 0.4 &&
+          rPos.y >= tile.centerY - 0.5 &&
+          rPos.y <= tile.centerY + 2.2
+        ) {
+          tile.state = 'BLINKING';
+          tile.timer = 3.0;
+          break;
         }
       }
     }

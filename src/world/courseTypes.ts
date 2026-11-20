@@ -334,6 +334,21 @@ export interface FallguysPistonData {
   hitCooldowns: Map<string, number>;
 }
 
+export interface FallguysDisappearingTileData {
+  mesh: THREE.Mesh;
+  material: THREE.MeshStandardMaterial;
+  collider: RAPIER.Collider;
+  baseColorHex: number;
+  centerX: number;
+  centerY: number;
+  centerZ: number;
+  halfW: number;
+  halfD: number;
+  state: 'SOLID' | 'BLINKING' | 'GONE';
+  timer: number;
+  spawnAnimTimer: number;
+}
+
 export interface OverheadBannerData {
   mat: THREE.MeshBasicMaterial | THREE.MeshStandardMaterial;
   z: number;

@@ -221,9 +221,6 @@ function buildZone4SparringArena(ctx: CourseBuildContext, shared: SharedObstacle
 
   // 3. Sliding Sparring Hogu Shield in the middle of the narrow bridge (Z = 113)
   shared.createSlidingShield(113, 1.8, 0.95, 0.42, 2.7, 3.2, 0.5, 0xdc2626);
-
-  // 4. Master's Final 4-Blade Black-Belt Sweeper before finish (Z = 127)
-  shared.createSweeper(127, 0, 5.2, 4.3, 4, 0x0f172a);
 }
 
 function buildTaekwondoBossObstacles(

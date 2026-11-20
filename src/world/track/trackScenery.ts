@@ -7,6 +7,7 @@ import {
   getTrackHalfWidthAtZ,
   getTrackHeightAtZ,
   getTrackYawAtZ,
+  hasFloorPitAtZ,
 } from '../courseMath';
 import {
   createAthleticTrackTexture,
@@ -241,32 +242,34 @@ export function buildCurvedTrackAndScenery(
       else if (zMid >= 100) floorMat = zone4Mat;
     }
 
-    const floorMesh = new THREE.Mesh(
-      new THREE.BoxGeometry(floorHalfW * 2, 1.2, floorSegLen),
-      floorMat
-    );
-    floorMesh.position.set(xMid, yMid - 0.6, zMid);
-    floorMesh.quaternion.copy(coplanarFloorQuat);
-    floorMesh.receiveShadow = true;
-    ctx.courseGroup.add(floorMesh);
+    if (!hasFloorPitAtZ(zMid, ctx.mapTheme)) {
+      const floorMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(floorHalfW * 2, 1.2, floorSegLen),
+        floorMat
+      );
+      floorMesh.position.set(xMid, yMid - 0.6, zMid);
+      floorMesh.quaternion.copy(coplanarFloorQuat);
+      floorMesh.receiveShadow = true;
+      ctx.courseGroup.add(floorMesh);
 
-    const floorBody = ctx.createBody(
-      RAPIER.RigidBodyDesc.fixed()
-        .setTranslation(xMid, yMid - 0.6, zMid)
-        .setRotation({
-          x: coplanarFloorQuat.x,
-          y: coplanarFloorQuat.y,
-          z: coplanarFloorQuat.z,
-          w: coplanarFloorQuat.w,
-        })
-    );
-    ctx.world.createCollider(
-      RAPIER.ColliderDesc.cuboid(floorHalfW, 0.6, floorSegLen * 0.5)
-        .setFriction(isDino ? 0.05 : isFg ? 0.09 : 0.12)
-        .setRestitution(0.15)
-        .setCollisionGroups(envGroup),
-      floorBody
-    );
+      const floorBody = ctx.createBody(
+        RAPIER.RigidBodyDesc.fixed()
+          .setTranslation(xMid, yMid - 0.6, zMid)
+          .setRotation({
+            x: coplanarFloorQuat.x,
+            y: coplanarFloorQuat.y,
+            z: coplanarFloorQuat.z,
+            w: coplanarFloorQuat.w,
+          })
+      );
+      ctx.world.createCollider(
+        RAPIER.ColliderDesc.cuboid(floorHalfW, 0.6, floorSegLen * 0.5)
+          .setFriction(isDino ? 0.05 : isFg ? 0.09 : 0.12)
+          .setRestitution(0.15)
+          .setCollisionGroups(envGroup),
+        floorBody
+      );
+    }
 
     const isBridge =
       isPool || isFg
@@ -519,7 +522,7 @@ export function buildCurvedTrackAndScenery(
     addArchSign(ctx, 43, '🫧 에어 쿠션 범퍼 존', '#0ea5b7', '#ecfeff', '#0f766e');
     addArchSign(ctx, 72, '🌀 대형 회전 빔 점프!', '#d97706', '#fef9c3', '#92400e');
     addArchSign(ctx, 88, '🥊 풍선 펀치월 & 피스톤', '#7c3aed', '#f5f3ff', '#5b21b6');
-    addArchSign(ctx, 101, '🟢 슬라임 램프 → 👑 왕관 결승', '#16a34a', '#ecfdf5', '#15803d');
+    addArchSign(ctx, 101, '🟨 사라지는 바닥 → 👑 왕관 결승', '#16a34a', '#ecfdf5', '#15803d');
   } else {
     addArchSign(ctx, 11, '🏫 교실 출발!', '#f59e0b', '#fef3c7', '#92400e');
     addArchSign(ctx, 43, '❓ 미스터리 관문', '#0284c7', '#e0f2fe', '#075985');
