@@ -23,6 +23,8 @@ export const GROUP_LIMB = 0x0004;
 const RESPAWN_SHIELD_SEC = 1.5;
 /** 구제 이동 직후 넉백 면역 시간(초). */
 const RESCUE_SHIELD_SEC = 2.5;
+/** 튜브에서 내린 뒤 다시 탈 수 있을 때까지의 시간(초). */
+const TUBE_REMOUNT_COOLDOWN_SEC = 4;
 /** 이 시간(초) 안에 이미 이 횟수만큼 떨어졌으면 다음 리스폰은 다음 체크포인트로 건너뛴다. */
 const REPEAT_RESPAWN_WINDOW_SEC = 20;
 const REPEAT_RESPAWN_COUNT = 2;
@@ -115,6 +117,9 @@ export class RagdollRacer {
   private turboTimer: number = 0;
   private turboBonus: number = 0;
   private tubeRideTimer: number = 0;
+  private tubeSpeedBonus: number = 4.3;
+  private tubeRemountReadyAt: number = 0;
+  private lastTotalRacers: number = 1;
   /** 리스폰 직후 장애물 넉백(triggerRagdoll·파도)을 무시하는 보호 시간(초). */
   private respawnShieldTimer: number = 0;
   /** 마지막 구간 리스폰 체크포인트(코스가 설정). 비어 있으면 finishZ - 32 사용. */
@@ -343,10 +348,32 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  /**
+   * 튜브 탑승. 앞선 레이서가 튜브로 격차를 더 벌리지 않도록 순위별로 효과를 차등한다.
+   * - 상위 25%: 속도 +2.0, 탑승 시간 ×0.52 (5.8초 → 약 3초)
+   * - 중위: 속도 +4.3, 탑승 시간 그대로
+   * - 하위 25%: 속도 +5.0, 탑승 시간 ×1.12 (5.8초 → 약 6.5초)
+   * 내린 뒤 TUBE_REMOUNT_COOLDOWN_SEC 동안은 다시 탈 수 없다.
+   */
   public mountTube(colorHex: number = 0xff5fa2, duration: number = 5.6): boolean {
     if (this.state === 'FINISHED' || this.state === 'RAGDOLL') return false;
     if (this.tubeRideTimer > 0.6) return false;
-    this.tubeRideTimer = duration;
+    if (this.elapsedTime < this.tubeRemountReadyAt) return false;
+
+    const rankRatio =
+      this.lastTotalRacers > 1 ? (this.rank - 1) / (this.lastTotalRacers - 1) : 0.5;
+    let durationScale = 1.0;
+    if (rankRatio < 0.25) {
+      this.tubeSpeedBonus = 2.0;
+      durationScale = 0.52;
+    } else if (rankRatio > 0.75) {
+      this.tubeSpeedBonus = 5.0;
+      durationScale = 1.12;
+    } else {
+      this.tubeSpeedBonus = 4.3;
+    }
+    this.tubeRideTimer = duration * durationScale;
+    this.tubeRemountReadyAt = this.elapsedTime + this.tubeRideTimer + TUBE_REMOUNT_COOLDOWN_SEC;
     this.slowDebuffTimer = 0;
     this.slowFactor = 1.0;
 
@@ -600,6 +627,7 @@ export class RagdollRacer {
     finishZ: number = 132
   ): void {
     this.elapsedTime += dt;
+    this.lastTotalRacers = totalRacers;
     const pos = this.torsoBody.translation();
     this._cachedPos.set(pos.x, pos.y, pos.z);
     const vel = this.torsoBody.linvel();
@@ -807,7 +835,7 @@ export class RagdollRacer {
     const rankRatio = totalRacers > 1 ? (this.rank - 1) / (totalRacers - 1) : 0;
     const comebackMultiplier = 1.0 + rankRatio * 0.19;
     const activeSlow = this.slowDebuffTimer > 0 ? this.slowFactor : 1.0;
-    const activeTurbo = (this.turboTimer > 0 ? this.turboBonus : 0) + (this.tubeRideTimer > 0 ? 4.3 : 0);
+    const activeTurbo = (this.turboTimer > 0 ? this.turboBonus : 0) + (this.tubeRideTimer > 0 ? this.tubeSpeedBonus : 0);
     const desiredForwardSpeed = (this.baseSpeed * comebackMultiplier + activeTurbo) * activeSlow;
     const maxLat = this.isKartMode ? 11.0 : 8.0;
     const desiredLateralSpeed = Math.max(

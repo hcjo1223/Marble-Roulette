@@ -5,6 +5,7 @@ import {
   getPrankFlickButtonConfig,
   getQuickFlickButtonConfig,
   getQuickMapButtonConfig,
+  MAP_DISPLAY_NAMES,
 } from '../game/mapThemeConfig';
 import type { GeneratedShareCard } from './shareCard';
 
@@ -370,6 +371,10 @@ export function showWinnerModal(
   const statRagdolls = document.getElementById('modal-winner-ragdolls')!;
   const rankList = document.getElementById('modal-rankings-list')!;
   const previewImg = document.getElementById('share-card-preview') as HTMLImageElement | null;
+  const shareTitleEl = document.getElementById('share-card-title');
+  const mapName = MAP_DISPLAY_NAMES[mapTheme];
+  if (shareTitleEl) shareTitleEl.textContent = `📸 ${mapName.icon} ${mapName.name} 결과 공유 카드`;
+  if (previewImg) previewImg.alt = `${mapName.name} 결과 공유 카드 미리보기`;
   const nativeBtn = document.getElementById('btn-share-native');
   const statusEl = document.getElementById('share-card-status');
 
