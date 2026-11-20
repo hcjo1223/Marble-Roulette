@@ -692,6 +692,8 @@ export class GiantTrapController {
           hand.comicSprite.position.set(tp.x + spriteOffsetX, tp.y + spriteOffsetY, tp.z);
           (hand.comicSprite.material as THREE.SpriteMaterial).opacity = 1;
 
+          sound.playCrowdGasp();
+
           if (this.onFinishFlick) {
             this.onFinishFlick(target, this.flickedRacerIds.size, hand.isManual);
           }

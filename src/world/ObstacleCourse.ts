@@ -1,6 +1,7 @@
 import * as THREE from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d';
 import type { FlickMode, MapTheme, ObstacleDensity } from '../types';
+import type { CustomCourseLayout, CustomObstacleSpec } from '../editor/editorTypes';
 import type { RagdollRacer } from '../entities/RagdollRacer';
 import type { ParticleSystem } from '../effects/ParticleSystem';
 import type { SoundManager } from '../audio/SoundManager';
@@ -22,6 +23,7 @@ import { FallguysCourseSystem } from './maps/FallguysCourseSystem';
 import { PoolCourseSystem } from './maps/PoolCourseSystem';
 import { buildPlaygroundCourse } from './maps/playgroundCourse';
 import { buildTaekwondoCourse } from './maps/taekwondoCourse';
+import { CrowdSystem } from './track/CrowdSystem';
 import { buildCurvedTrackAndScenery, buildFinishArch, buildStartGate } from './track/trackScenery';
 import { GiantTrapController } from './traps/GiantTrapController';
 
@@ -45,6 +47,7 @@ export class ObstacleCourse {
   private poolCourse: PoolCourseSystem;
   private fallguysCourse: FallguysCourseSystem;
   private giantTraps: GiantTrapController;
+  private crowd: CrowdSystem;
 
   private startGateBody: RAPIER.RigidBody;
   private startGateMesh: THREE.Mesh;
@@ -54,13 +57,16 @@ export class ObstacleCourse {
 
   public onFinishFlick?: (racer: RagdollRacer, flickNumber: number, isManual: boolean) => void;
   public onPoolSplash?: (racer: RagdollRacer, kind: 'BALLOON' | 'DUCK') => void;
+  public onTubeMount?: (racer: RagdollRacer) => void;
 
   constructor(
     world: RAPIER.World,
     scene: THREE.Scene,
     mapTheme: MapTheme = 'PLAYGROUND',
     obstacleDensity: ObstacleDensity = 'NORMAL',
-    flickMode: FlickMode = 'DOUBLE'
+    flickMode: FlickMode = 'DOUBLE',
+    isMobile: boolean = false,
+    customLayout: CustomCourseLayout | null = null
   ) {
     this.world = world;
     this.scene = scene;
@@ -92,10 +98,16 @@ export class ObstacleCourse {
     );
 
     this.giantTraps.onFinishFlick = (racer, flickNumber, isManual) => {
+      this.crowd.triggerExcitement(1.3, 2.8);
       this.onFinishFlick?.(racer, flickNumber, isManual);
     };
     this.poolCourse.onPoolSplash = (racer, kind) => {
+      this.crowd.triggerExcitement(1.0, 2.2);
       this.onPoolSplash?.(racer, kind);
+    };
+    this.poolCourse.onTubeMount = (racer) => {
+      this.crowd.triggerExcitement(0.65, 1.5);
+      this.onTubeMount?.(racer);
     };
 
     const sceneryBuilder =
@@ -113,20 +125,125 @@ export class ObstacleCourse {
     this.startGateMesh = startGate.startGateMesh;
     this.startGateBody = startGate.startGateBody;
 
-    if (this.mapTheme === 'TAEKWONDO') {
-      buildTaekwondoCourse(this.ctx, this.sharedObstacles);
-    } else if (this.mapTheme === 'DINOSAUR') {
-      this.dinoCourse.build();
-    } else if (this.mapTheme === 'POOL') {
-      this.poolCourse.build();
-    } else if (this.mapTheme === 'FALLGUYS') {
-      this.fallguysCourse.build();
-    } else {
-      buildPlaygroundCourse(this.ctx, this.sharedObstacles);
+    const skipBase = Boolean(customLayout?.clearBaseObstacles);
+    if (!skipBase) {
+      if (this.mapTheme === 'TAEKWONDO') {
+        buildTaekwondoCourse(this.ctx, this.sharedObstacles);
+      } else if (this.mapTheme === 'DINOSAUR') {
+        this.dinoCourse.build();
+      } else if (this.mapTheme === 'POOL') {
+        this.poolCourse.build();
+      } else if (this.mapTheme === 'FALLGUYS') {
+        this.fallguysCourse.build();
+      } else {
+        buildPlaygroundCourse(this.ctx, this.sharedObstacles);
+      }
+    }
+
+    if (customLayout && customLayout.obstacles.length > 0) {
+      this.applyCustomObstacles(customLayout.obstacles);
     }
 
     buildFinishArch(this.ctx, this.mapTheme === 'TAEKWONDO');
+    this.crowd = new CrowdSystem(this.courseGroup, this.mapTheme, this.finishZ, isMobile);
     this.giantTraps.build();
+  }
+
+  private applyCustomObstacles(obstacles: CustomObstacleSpec[]): void {
+    let doorRowIdx = 10;
+    obstacles.forEach((ob, idx) => {
+      const z = THREE.MathUtils.clamp(ob.z, 13, this.finishZ - 5);
+      const halfW = this.getTrackHalfWidthAtZ(z);
+      const offsetX = THREE.MathUtils.clamp(ob.offsetX, -halfW + 1.4, halfW - 1.4);
+      const scale = THREE.MathUtils.clamp(ob.scale || 1, 0.6, 1.8);
+      const spd = Math.max(0.5, ob.speed || 1);
+      const dir = ob.dir >= 0 ? 1 : -1;
+
+      switch (ob.kind) {
+        case 'SWEEPER':
+          this.sharedObstacles.createSweeper(
+            z,
+            offsetX,
+            4.8 * scale,
+            spd * dir,
+            scale > 1.25 ? 3 : 2,
+            0xff5fa2
+          );
+          break;
+        case 'POPUP_BUMPER':
+          this.sharedObstacles.addPopupBumpers(
+            [{ z, offset: offsetX, phase: idx * 0.8, freq: Math.max(1.5, spd) }],
+            0x10b981
+          );
+          break;
+        case 'PINBALL_BUMPER':
+          this.sharedObstacles.addPinballBumpers([{ z, offset: offsetX }], 0xec4899);
+          break;
+        case 'SLIDING_WALL':
+          this.sharedObstacles.createSlidingShield(
+            z,
+            2.1 * scale,
+            1.1,
+            0.5,
+            Math.max(2.0, halfW - 2.6 * scale),
+            spd,
+            idx * 0.9,
+            0x2bdfe8
+          );
+          break;
+        case 'PENDULUM':
+          this.sharedObstacles.addSwingingPendulums(
+            [{ z, freq: Math.max(1.2, spd), phase: idx * 0.7, maxAngle: 0.9 }],
+            this.mapTheme === 'TAEKWONDO'
+          );
+          break;
+        case 'SPRINGBOARD':
+          this.sharedObstacles.createSpringboard(
+            z,
+            offsetX,
+            2.1 * scale,
+            1.6 * scale,
+            18 * Math.min(1.5, spd),
+            24 * scale
+          );
+          break;
+        case 'BOOST_BELT': {
+          const minX = THREE.MathUtils.clamp(offsetX - 2.8 * scale, -8.5, 4.0);
+          const maxX = THREE.MathUtils.clamp(minX + 5.6 * scale, -4.0, 8.5);
+          this.sharedObstacles.addConveyorBelt(z - 5, z + 5, minX, maxX, Math.abs(spd), true);
+          break;
+        }
+        case 'REVERSE_BELT': {
+          const minX = THREE.MathUtils.clamp(offsetX - 2.8 * scale, -8.5, 4.0);
+          const maxX = THREE.MathUtils.clamp(minX + 5.6 * scale, -4.0, 8.5);
+          this.sharedObstacles.addConveyorBelt(z - 5, z + 5, minX, maxX, -Math.abs(spd), false);
+          break;
+        }
+        case 'WIND_FAN':
+          this.sharedObstacles.addWindFan(z - 4, z + 4, offsetX < 0 ? -1 : 1, Math.abs(spd));
+          break;
+        case 'BREAKING_DOORS': {
+          const style =
+            this.mapTheme === 'TAEKWONDO'
+              ? 'PINEWOOD'
+              : this.mapTheme === 'DINOSAUR'
+              ? 'EGG'
+              : 'MYSTERY';
+          this.sharedObstacles.buildBreakingDoorRow(z, 5, doorRowIdx++, style);
+          break;
+        }
+        case 'WAVE_CURRENT':
+          this.poolCourse.addWaveCurrentZone(
+            z - 5,
+            z + 5,
+            dir,
+            22 * scale,
+            Math.max(1.0, spd),
+            idx * 0.8
+          );
+          break;
+      }
+    });
   }
 
   private createBody(desc: RAPIER.RigidBodyDesc): RAPIER.RigidBody {
@@ -141,6 +258,11 @@ export class ObstacleCourse {
 
   public openStartGate(): void {
     this.gateOpen = true;
+    this.crowd.triggerExcitement(1.1, 2.5);
+  }
+
+  public triggerCrowdExcitement(intensity: number = 1.0, duration: number = 2.4): void {
+    this.crowd.triggerExcitement(intensity, duration);
   }
 
   public dispose(): void {
@@ -150,6 +272,21 @@ export class ObstacleCourse {
       }
     }
     this.bodies = [];
+
+    this.courseGroup.traverse((obj) => {
+      const mesh = obj as THREE.Mesh;
+      if (mesh.geometry) {
+        mesh.geometry.dispose();
+      }
+      if (mesh.material) {
+        const mats = Array.isArray(mesh.material) ? mesh.material : [mesh.material];
+        for (const m of mats) {
+          const std = m as THREE.MeshStandardMaterial;
+          if (std.map) std.map.dispose();
+          m.dispose();
+        }
+      }
+    });
     this.scene.remove(this.courseGroup);
   }
 
@@ -245,10 +382,13 @@ export class ObstacleCourse {
     // 13..18. Dinosaur course mechanics & idle animations
     this.dinoCourse.update(dt, this.elapsedTime, racers, particles, sound, isRacing);
 
-    // 19. Pool course water drops & splash rings
+    // 19. Pool course tubes, water jets, wave currents, drops & splash rings
     this.poolCourse.update(dt, this.elapsedTime, racers, particles, sound, isRacing);
 
     // 20. Fall Guys course cushions, punch walls & pistons
     this.fallguysCourse.update(dt, this.elapsedTime, racers, particles, sound, isRacing);
+
+    // 21. Cheering stadium crowd animation
+    this.crowd.update(dt, this.elapsedTime);
   }
 }

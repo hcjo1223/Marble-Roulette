@@ -1,6 +1,7 @@
 import './style.css';
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER_NS from '@dimforge/rapier3d';
+let RAPIER: typeof RAPIER_NS;
 import type {
   CameraMode,
   FlickMode,
@@ -8,6 +9,8 @@ import type {
   ObstacleDensity,
   WinningRule,
 } from './types';
+import type { CustomCourseLayout } from './editor/editorTypes';
+import type { MapEditor } from './editor/MapEditor';
 import { SoundManager } from './audio/SoundManager';
 import { ParticleSystem } from './effects/ParticleSystem';
 import { RagdollRacer } from './entities/RagdollRacer';
@@ -23,6 +26,7 @@ import {
   parseInitialRaceOptions,
   parseParticipantsText,
 } from './game/mapThemeConfig';
+import { PerfTelemetry } from './game/perfTelemetry';
 import {
   hideHudBanner,
   renderLeaderboardUI,
@@ -37,7 +41,7 @@ import {
 } from './ui/raceHud';
 
 class RagdollDerbyGame {
-  private world!: RAPIER.World;
+  private world!: RAPIER_NS.World;
   private scene!: THREE.Scene;
   private renderer!: THREE.WebGLRenderer;
   private dirLight!: THREE.DirectionalLight;
@@ -46,6 +50,10 @@ class RagdollDerbyGame {
   private particles!: ParticleSystem;
   private sound: SoundManager = new SoundManager();
   private raycaster: THREE.Raycaster = new THREE.Raycaster();
+  private perfTelemetry!: PerfTelemetry;
+  private mapEditor: MapEditor | null = null;
+  private activeCustomLayout: CustomCourseLayout | null = null;
+  private tubeBannerCount: number = 0;
 
   private racers: RagdollRacer[] = [];
   private sortedRacers: RagdollRacer[] = [];
@@ -73,14 +81,65 @@ class RagdollDerbyGame {
     return window.innerWidth <= 768;
   }
 
+  private updateAdaptiveQuality(racerCount: number): void {
+    const isMobile = this.isMobileViewport();
+    const targetDpr = isMobile
+      ? racerCount >= 28
+        ? 1.0
+        : 1.25
+      : Math.min(window.devicePixelRatio, 2);
+    this.renderer.setPixelRatio(targetDpr);
+
+    if (this.world) {
+      this.world.integrationParameters.numSolverIterations = racerCount >= 30 ? 2 : 4;
+      this.world.integrationParameters.numInternalPgsIterations = racerCount >= 30 ? 1 : 2;
+    }
+  }
+
+  private syncCustomBannerUI(): void {
+    const banner = document.getElementById('custom-map-banner');
+    const label = document.getElementById('custom-map-label');
+    if (!banner || !label) return;
+    if (this.activeCustomLayout && this.activeCustomLayout.obstacles.length > 0) {
+      banner.classList.remove('hidden');
+      label.textContent = `🛠️ 커스텀 맵 (${this.activeCustomLayout.obstacles.length}개 배치)`;
+    } else if (this.activeCustomLayout?.clearBaseObstacles) {
+      banner.classList.remove('hidden');
+      label.textContent = `🛠️ 빈 트랙 커스텀 모드`;
+    } else {
+      banner.classList.add('hidden');
+    }
+  }
+
   public async init(): Promise<void> {
-    await RAPIER.init();
+    RAPIER = await import('@dimforge/rapier3d');
+
+    const urlParams = new URLSearchParams(window.location.search);
+    this.perfTelemetry = new PerfTelemetry(
+      urlParams.get('perf') === '1' || urlParams.has('bench')
+    );
 
     const isMobile = this.isMobileViewport();
     const initial = parseInitialRaceOptions(window.location.search);
     this.mapTheme = initial.mapTheme;
     this.obstacleDensity = initial.obstacleDensity;
     this.flickMode = initial.flickMode;
+
+    const customParam = urlParams.get('custom');
+    const hasSavedCustom = Boolean(localStorage.getItem('marble_roulette_custom_layout_v1'));
+    if (customParam || hasSavedCustom) {
+      const { decodeCustomLayoutFromUrlParam, loadSavedCustomLayout } = await import(
+        './editor/MapEditor'
+      );
+      const loaded = customParam
+        ? decodeCustomLayoutFromUrlParam(customParam)
+        : loadSavedCustomLayout();
+      if (loaded && (loaded.obstacles.length > 0 || loaded.clearBaseObstacles)) {
+        this.activeCustomLayout = loaded;
+        this.mapTheme = loaded.baseMap;
+      }
+    }
+    this.sound.setMapTheme(this.mapTheme);
 
     // 1. Bright Sunny Daylight Three.js Scene
     const container = document.getElementById('canvas-container')!;
@@ -95,13 +154,15 @@ class RagdollDerbyGame {
     );
 
     this.renderer = new THREE.WebGLRenderer({
-      antialias: true,
+      antialias: !isMobile,
       powerPreference: 'high-performance',
     });
     this.renderer.setSize(window.innerWidth, window.innerHeight);
-    this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, isMobile ? 1.75 : 2));
+    this.renderer.setPixelRatio(
+      isMobile ? 1.25 : Math.min(window.devicePixelRatio, 2)
+    );
     this.renderer.shadowMap.enabled = true;
-    this.renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    this.renderer.shadowMap.type = isMobile ? THREE.BasicShadowMap : THREE.PCFSoftShadowMap;
     this.renderer.toneMapping = THREE.ACESFilmicToneMapping;
     this.renderer.toneMappingExposure = 1.08;
     container.appendChild(this.renderer.domElement);
@@ -113,7 +174,7 @@ class RagdollDerbyGame {
     this.dirLight = new THREE.DirectionalLight(0xfffbeb, 1.45);
     this.dirLight.position.set(24, 44, 16);
     this.dirLight.castShadow = true;
-    const shadowRes = isMobile ? 1024 : 2048;
+    const shadowRes = isMobile ? 512 : 2048;
     this.dirLight.shadow.mapSize.set(shadowRes, shadowRes);
     this.dirLight.shadow.camera.near = 2;
     this.dirLight.shadow.camera.far = 140;
@@ -127,13 +188,15 @@ class RagdollDerbyGame {
 
     // 3. Physics World & Course
     this.world = new RAPIER.World({ x: 0, y: -26.0, z: 0 });
-    this.particles = new ParticleSystem(this.scene);
+    this.particles = new ParticleSystem(this.scene, isMobile);
     this.course = new ObstacleCourse(
       this.world,
       this.scene,
       this.mapTheme,
       this.obstacleDensity,
-      this.flickMode
+      this.flickMode,
+      isMobile,
+      this.activeCustomLayout
     );
     this.bindCourseCallbacks();
     this.cameraDirector = new CameraDirector(camera, this.renderer.domElement);
@@ -149,11 +212,31 @@ class RagdollDerbyGame {
     this.bindUIEvents();
     syncMapThemeUI(this.mapTheme, this.flickMode);
     syncDensityUI(this.obstacleDensity);
+    this.syncCustomBannerUI();
+
+    const benchCount = parseInt(urlParams.get('bench') || '', 10);
+    if (Number.isFinite(benchCount) && benchCount >= 2) {
+      const clamped = Math.min(48, benchCount);
+      const textarea = document.getElementById('participants-input') as HTMLTextAreaElement;
+      textarea.value = Array.from({ length: clamped }, (_, i) => `${i + 1}번`).join(', ');
+    }
+
     this.rebuildRacersFromInput();
+
+    if (urlParams.get('autostart') === '1') {
+      document.getElementById('setup-panel')!.classList.add('collapsed');
+      document.getElementById('leaderboard-panel')!.classList.add('mobile-collapsed');
+      this.course.openStartGate();
+      this.phase = 'RACING';
+      for (const r of this.racers) {
+        r.state = 'RUNNING';
+      }
+    }
 
     const handleResize = () => {
       this.cameraDirector.updateAspectAndFov(window.innerWidth, window.innerHeight);
       this.renderer.setSize(window.innerWidth, window.innerHeight);
+      this.updateAdaptiveQuality(this.racers.length);
     };
 
     window.addEventListener('resize', handleResize);
@@ -183,6 +266,37 @@ class RagdollDerbyGame {
         2.0
       );
     };
+
+    this.course.onTubeMount = (racer) => {
+      if (this.tubeBannerCount < 3) {
+        this.tubeBannerCount++;
+        this.showBannerMessage(
+          `🛟 물놀이 튜브 탑승! [${racer.name}] 파도를 타며 고속 서핑!`,
+          1.8
+        );
+      }
+    };
+  }
+
+  private rebuildCourse(): void {
+    this.sound.setMapTheme(this.mapTheme);
+    applySkyTheme(this.scene, this.mapTheme);
+    syncMapThemeUI(this.mapTheme, this.flickMode);
+    syncDensityUI(this.obstacleDensity);
+    this.syncCustomBannerUI();
+
+    this.course.dispose();
+    this.course = new ObstacleCourse(
+      this.world,
+      this.scene,
+      this.mapTheme,
+      this.obstacleDensity,
+      this.flickMode,
+      this.isMobileViewport(),
+      this.activeCustomLayout
+    );
+    this.bindCourseCallbacks();
+    this.rebuildRacersFromInput();
   }
 
   private switchFlickMode(newMode: FlickMode): void {
@@ -199,19 +313,13 @@ class RagdollDerbyGame {
     }
 
     this.mapTheme = newTheme;
-    applySkyTheme(this.scene, this.mapTheme);
-    syncMapThemeUI(this.mapTheme, this.flickMode);
-
-    this.course.dispose();
-    this.course = new ObstacleCourse(
-      this.world,
-      this.scene,
-      this.mapTheme,
-      this.obstacleDensity,
-      this.flickMode
-    );
-    this.bindCourseCallbacks();
-    this.rebuildRacersFromInput();
+    this.activeCustomLayout = null;
+    if (this.mapEditor?.getIsOpen()) {
+      this.mapEditor.close();
+      this.cameraDirector.editorMode = false;
+      document.getElementById('btn-toggle-editor')?.classList.remove('active');
+    }
+    this.rebuildCourse();
   }
 
   private switchObstacleDensity(newDensity: ObstacleDensity): void {
@@ -222,18 +330,7 @@ class RagdollDerbyGame {
     }
 
     this.obstacleDensity = newDensity;
-    syncDensityUI(this.obstacleDensity);
-
-    this.course.dispose();
-    this.course = new ObstacleCourse(
-      this.world,
-      this.scene,
-      this.mapTheme,
-      this.obstacleDensity,
-      this.flickMode
-    );
-    this.bindCourseCallbacks();
-    this.rebuildRacersFromInput();
+    this.rebuildCourse();
   }
 
   private focusOnRacer(racerId: string, collapseOnMobile: boolean = false): void {
@@ -288,6 +385,8 @@ class RagdollDerbyGame {
     this.particles.clear();
     this.course.resetCourseState();
 
+    this.tubeBannerCount = 0;
+
     this.phase = 'READY';
     this.raceElapsed = 0;
     this.autoSlowMoTimer = 0;
@@ -307,6 +406,7 @@ class RagdollDerbyGame {
     const isDinoKart = this.mapTheme === 'DINOSAUR';
     const spacingX = isDinoKart ? 1.95 : 1.85;
     const spacingZ = isDinoKart ? 2.0 : 1.55;
+    const lowCostMode = this.isMobileViewport() || entries.length >= 24;
 
     entries.forEach((entry, idx) => {
       const row = Math.floor(idx / cols);
@@ -323,11 +423,13 @@ class RagdollDerbyGame {
         new THREE.Vector3(x, y, z),
         this.world,
         this.scene,
-        this.mapTheme
+        this.mapTheme,
+        lowCostMode
       );
       this.racers.push(racer);
     });
 
+    this.updateAdaptiveQuality(entries.length);
     this.sortedRacers = [...this.racers];
     this.targetRank = updateRuleTelemetryUI(this.winningRule, this.racers.length);
     this.renderLeaderboard(true);
@@ -349,6 +451,13 @@ class RagdollDerbyGame {
     if (this.countdownTimer !== null) {
       clearInterval(this.countdownTimer);
       this.countdownTimer = null;
+    }
+
+    if (this.mapEditor?.getIsOpen()) {
+      this.mapEditor.close();
+      this.cameraDirector.editorMode = false;
+      this.cameraDirector.setMode('LEAD', syncCameraButtons);
+      document.getElementById('btn-toggle-editor')?.classList.remove('active');
     }
 
     this.rebuildRacersFromInput();
@@ -620,9 +729,85 @@ class RagdollDerbyGame {
         this.sound.stopArcadeBgm();
         btnBgm.classList.add('muted');
       } else {
-        this.sound.startArcadeBgm();
+        this.sound.startArcadeBgm(this.mapTheme);
         btnBgm.classList.remove('muted');
       }
+    });
+
+    const btnEditor = document.getElementById('btn-toggle-editor');
+    btnEditor?.addEventListener('click', async () => {
+      if (!this.mapEditor) {
+        const { MapEditor } = await import('./editor/MapEditor');
+        this.mapEditor = new MapEditor(
+          {
+            getScene: () => this.scene,
+            getCamera: () => this.cameraDirector.camera,
+            getDomElement: () => this.renderer.domElement,
+            getCurrentMapTheme: () => this.mapTheme,
+            onLayoutChanged: (layout, previewZ) => {
+              this.activeCustomLayout =
+                layout && (layout.obstacles.length > 0 || layout.clearBaseObstacles)
+                  ? layout
+                  : null;
+              if (layout) {
+                this.mapTheme = layout.baseMap;
+              }
+              this.rebuildCourse();
+              if (typeof previewZ === 'number') {
+                this.cameraDirector.setTopPanZ(previewZ);
+              }
+            },
+            onStartRace: (layout) => {
+              this.activeCustomLayout =
+                layout.obstacles.length > 0 || layout.clearBaseObstacles ? layout : null;
+              this.mapTheme = layout.baseMap;
+              this.mapEditor?.close();
+              this.cameraDirector.editorMode = false;
+              this.cameraDirector.setMode('LEAD', syncCameraButtons);
+              btnEditor.classList.remove('active');
+              this.rebuildCourse();
+              this.startRaceCountdown();
+            },
+            onCloseEditor: () => {
+              this.cameraDirector.editorMode = false;
+              this.cameraDirector.setMode('LEAD', syncCameraButtons);
+              btnEditor.classList.remove('active');
+            },
+            onPreviewZ: (z) => {
+              this.cameraDirector.setTopPanZ(z);
+            },
+          },
+          this.activeCustomLayout
+        );
+      }
+
+      if (this.mapEditor.getIsOpen()) {
+        this.mapEditor.close();
+        this.cameraDirector.editorMode = false;
+        this.cameraDirector.setMode('LEAD', syncCameraButtons);
+        btnEditor.classList.remove('active');
+      } else {
+        setupPanel.classList.add('collapsed');
+        leaderboardPanel.classList.add('mobile-collapsed');
+        this.cameraDirector.editorMode = true;
+        this.cameraDirector.setMode('TOP', syncCameraButtons);
+        this.mapEditor.open();
+        btnEditor.classList.add('active');
+      }
+    });
+
+    document.getElementById('btn-clear-custom-map')?.addEventListener('click', async () => {
+      this.activeCustomLayout = null;
+      const { saveCustomLayout } = await import('./editor/MapEditor');
+      saveCustomLayout(null);
+      this.rebuildCourse();
+    });
+
+    const btnPerf = document.getElementById('btn-toggle-perf');
+    btnPerf?.addEventListener('click', () => {
+      const next = !this.perfTelemetry.enabled;
+      this.perfTelemetry.setEnabled(next);
+      btnPerf.classList.toggle('active', next);
     });
 
     document.querySelectorAll<HTMLButtonElement>('[data-cam]').forEach((btn) => {
@@ -645,7 +830,8 @@ class RagdollDerbyGame {
     window.addEventListener('keydown', (e) => {
       if (
         document.activeElement?.tagName === 'TEXTAREA' ||
-        document.activeElement?.tagName === 'INPUT'
+        document.activeElement?.tagName === 'INPUT' ||
+        document.activeElement?.tagName === 'SELECT'
       ) {
         return;
       }
@@ -677,14 +863,25 @@ class RagdollDerbyGame {
     this.setSlowMoVisuals(false);
 
     this.cameraDirector.focusedRacerId = winner.id;
+    this.course.triggerCrowdExcitement(1.5, 3.5);
     this.sound.playFinishChime(true);
+
+    this.renderer.render(this.scene, this.cameraDirector.camera);
+    let screenshotDataUrl: string | null = null;
+    try {
+      screenshotDataUrl = this.renderer.domElement.toDataURL('image/png');
+    } catch {
+      screenshotDataUrl = null;
+    }
 
     showWinnerModal(
       winner,
       this.sortedRacers,
       this.winningRule,
       this.targetRank,
-      this.raceElapsed
+      this.raceElapsed,
+      this.mapTheme,
+      screenshotDataUrl
     );
   }
 
@@ -716,6 +913,7 @@ class RagdollDerbyGame {
         this.hasTriggeredAutoSlowMo = true;
         this.autoSlowMoTimer = 2.3;
         this.sound.playSlowMoTrigger();
+        this.course.triggerCrowdExcitement(1.3, 2.8);
         this.setSlowMoVisuals(true);
       }
     }
@@ -743,6 +941,8 @@ class RagdollDerbyGame {
       document.getElementById('hud-timer')!.textContent = `${this.raceElapsed.toFixed(1)}초`;
     }
 
+    const frameStart = performance.now();
+    const tCourseStart = performance.now();
     this.course.update(
       simDt,
       this.racers,
@@ -751,6 +951,7 @@ class RagdollDerbyGame {
       this.phase === 'RACING',
       this.cameraDirector.camera.position
     );
+    const tAiStart = performance.now();
 
     for (const r of this.racers) {
       r.updateAIAndPhysics(
@@ -786,8 +987,12 @@ class RagdollDerbyGame {
       }
     }
 
+    const tWorldStart = performance.now();
     this.world.timestep = Math.max(0.002, simDt);
     this.world.step();
+    for (const r of this.racers) {
+      r.refreshCachedPosition();
+    }
 
     this.particles.update(simDt);
 
@@ -800,6 +1005,7 @@ class RagdollDerbyGame {
       return b.getPosition().z - a.getPosition().z;
     });
 
+    const tSyncStart = performance.now();
     for (const r of this.racers) {
       r.syncVisuals(
         this.cameraDirector.focusedRacerId === r.id,
@@ -821,13 +1027,37 @@ class RagdollDerbyGame {
       finishZ
     );
 
+    const tUiStart = performance.now();
     this.uiUpdateAccum += realDt;
     if (this.uiUpdateAccum >= 0.08) {
       this.uiUpdateAccum = 0;
       this.renderLeaderboard(false);
     }
 
+    const tRenderStart = performance.now();
     this.renderer.render(this.scene, this.cameraDirector.camera);
+    const tFrameEnd = performance.now();
+
+    this.perfTelemetry.recordFrame(
+      {
+        frameMs: Math.max(tFrameEnd - frameStart, realDt * 1000),
+        courseMs: tAiStart - tCourseStart,
+        aiMs: tWorldStart - tAiStart,
+        worldStepMs: tSyncStart - tWorldStart,
+        syncMs: tUiStart - tSyncStart,
+        uiMs: tRenderStart - tUiStart,
+        renderMs: tFrameEnd - tRenderStart,
+      },
+      {
+        phase: this.phase,
+        mapTheme: this.mapTheme,
+        isMobile: this.isMobileViewport(),
+        pixelRatio: this.renderer.getPixelRatio(),
+        racerCount: this.racers.length,
+        world: this.world,
+        renderer: this.renderer,
+      }
+    );
   }
 }
 

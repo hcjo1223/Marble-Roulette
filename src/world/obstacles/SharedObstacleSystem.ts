@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import type { RagdollRacer } from '../../entities/RagdollRacer';
 import type { ParticleSystem } from '../../effects/ParticleSystem';
 import type { SoundManager } from '../../audio/SoundManager';
@@ -638,6 +638,95 @@ export class SharedObstacleSystem {
         streamParticles,
       });
     }
+  }
+
+  public addConveyorBelt(
+    zMin: number,
+    zMax: number,
+    sideOffsetMin: number,
+    sideOffsetMax: number,
+    speedZ: number,
+    isBoost: boolean
+  ): void {
+    const zLen = Math.max(2, zMax - zMin);
+    const tex = createConveyorTexture(this.ctx.mapTheme, isBoost);
+    tex.repeat.set(1, zLen * 0.45);
+
+    const stripGeo = createCurvedFloorStripGeometry(
+      zMin,
+      zMax,
+      sideOffsetMin,
+      sideOffsetMax,
+      0.09,
+      10
+    );
+    const stripMat = new THREE.MeshBasicMaterial({
+      map: tex,
+      side: THREE.DoubleSide,
+      polygonOffset: true,
+      polygonOffsetFactor: -2,
+      polygonOffsetUnits: -2,
+    });
+    this.ctx.courseGroup.add(new THREE.Mesh(stripGeo, stripMat));
+
+    this.conveyors.push({
+      zMin,
+      zMax,
+      sideOffsetMin,
+      sideOffsetMax,
+      speedZ,
+      texture: tex,
+    });
+  }
+
+  public addWindFan(zMin: number, zMax: number, side: 1 | -1, force: number): void {
+    const dirX = side < 0 ? 1 : -1;
+    const zMid = (zMin + zMax) * 0.5;
+    const cx = getTrackCenterX(zMid);
+    const yMid = getTrackHeightAtZ(zMid) + 2.3;
+    const xHousing = cx + side * 9.8;
+
+    const housing = new THREE.Mesh(
+      new THREE.CylinderGeometry(2.1, 2.1, 1.1, 18),
+      new THREE.MeshStandardMaterial({ color: 0x0284c7, roughness: 0.25 })
+    );
+    housing.rotation.z = Math.PI / 2;
+    housing.position.set(xHousing, yMid, zMid);
+    this.ctx.courseGroup.add(housing);
+
+    const bladesGroup = new THREE.Group();
+    bladesGroup.position.set(xHousing - side * 0.55, yMid, zMid);
+    const bladeMat = new THREE.MeshStandardMaterial({ color: 0xffffff, roughness: 0.2 });
+    for (let b = 0; b < 3; b++) {
+      const blade = new THREE.Mesh(new THREE.BoxGeometry(0.18, 3.4, 0.68), bladeMat);
+      blade.rotation.x = (b * Math.PI) / 3;
+      bladesGroup.add(blade);
+    }
+    this.ctx.courseGroup.add(bladesGroup);
+
+    const pCount = 32;
+    const positions = new Float32Array(pCount * 3);
+    for (let i = 0; i < pCount; i++) {
+      positions[i * 3] = cx + (Math.random() - 0.5) * 16;
+      positions[i * 3 + 1] = yMid - 1.1 + Math.random() * 2.2;
+      positions[i * 3 + 2] = zMin + Math.random() * (zMax - zMin);
+    }
+    const pGeo = new THREE.BufferGeometry();
+    pGeo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    const streamParticles = new THREE.Points(
+      pGeo,
+      new THREE.PointsMaterial({ color: 0xffffff, size: 0.36, transparent: true, opacity: 0.85 })
+    );
+    this.ctx.courseGroup.add(streamParticles);
+
+    this.windFans.push({
+      zMin,
+      zMax,
+      dirX,
+      force,
+      bladesMesh: bladesGroup,
+      streamParticles,
+    });
   }
 
   public addSwingingPendulums(

@@ -71,6 +71,9 @@
 
       <!-- Top Right Quick Action Pills -->
       <div id="top-right-actions">
+        <button id="btn-toggle-editor" class="pill-btn editor-pill" title="맵 에디터 / 커스텀 장애물 배치">
+          🛠️ 에디터
+        </button>
         <button id="btn-toggle-setup" class="pill-btn primary-pill" title="참가자 설정 열기/닫기">
           ⚙️ 설정
         </button>
@@ -198,9 +201,18 @@
           <button id="btn-start-race" class="primary-cta-btn">
             🏁 레이스 출발! (START)
           </button>
-          <button id="btn-shuffle-racers" class="secondary-btn">
-            🔀 자리 섞기 / 리셋
-          </button>
+          <div class="setup-utility-row">
+            <button id="btn-shuffle-racers" class="secondary-btn">
+              🔀 자리 섞기 / 리셋
+            </button>
+            <button id="btn-toggle-perf" type="button" class="secondary-btn" title="실시간 FPS 및 물리 프레임 측정 표시">
+              📊 프레임 측정
+            </button>
+          </div>
+          <div id="custom-map-banner" class="custom-map-banner hidden">
+            <span id="custom-map-label">🛠️ 커스텀 맵 적용 중</span>
+            <button id="btn-clear-custom-map" type="button" class="mini-clear-btn">해제</button>
+          </div>
         </div>
       </aside>
 
@@ -277,6 +289,25 @@
             </div>
           </div>
 
+          <div class="share-card-section">
+            <div class="share-card-header">
+              <span>📸 폴가이즈 결과 공유 카드</span>
+              <span id="share-card-status" class="share-card-status"></span>
+            </div>
+            <img id="share-card-preview" class="share-card-preview hidden" alt="폴가이즈 결과 공유 카드 미리보기" />
+            <div class="share-card-actions">
+              <button type="button" id="btn-share-download" class="share-pill-btn save">
+                💾 이미지 저장
+              </button>
+              <button type="button" id="btn-share-copy" class="share-pill-btn copy">
+                📋 카드 복사
+              </button>
+              <button type="button" id="btn-share-native" class="share-pill-btn native hidden">
+                📤 공유하기
+              </button>
+            </div>
+          </div>
+
           <div class="modal-rankings-wrap">
             <h3>전체 완주 순위</h3>
             <div id="modal-rankings-list" class="modal-rankings-list"></div>
@@ -286,9 +317,14 @@
             <button id="btn-modal-rematch" class="primary-cta-btn">
               🔄 같은 멤버로 즉시 재경기
             </button>
-            <button id="btn-modal-close" class="secondary-btn">
-              닫고 관전 계속하기
-            </button>
+            <div class="modal-secondary-row">
+              <button id="btn-modal-close" class="secondary-btn">
+                닫고 관전 계속하기
+              </button>
+              <button id="btn-copy-class-log" type="button" class="secondary-btn" title="수업 실사용 피드백 기록용 요약 복사">
+                📝 수업 기록 복사
+              </button>
+            </div>
           </div>
         </div>
       </div>

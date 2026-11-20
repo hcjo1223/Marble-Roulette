@@ -30,6 +30,19 @@ jobs:
       - name: TypeScript & Vite Build Check
         run: npx tsc && npx vite build && touch dist/.nojekyll
 
+      - name: Report dist bundle sizes
+        run: |
+          {
+            echo "### 📦 Build Output Summary"
+            echo ""
+            echo "| File | Size |"
+            echo "| --- | ---: |"
+            find dist/assets -maxdepth 1 -type f | sort | while read -r f; do
+              sz=$(du -h "$f" | cut -f1)
+              echo "| \`${f#dist/}\` | $sz |"
+            done
+          } >> "$GITHUB_STEP_SUMMARY"
+
       - name: Upload dist artifact
         if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
         uses: actions/upload-artifact@v4

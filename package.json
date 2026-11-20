@@ -5,18 +5,18 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc && vite build && cp -r dist/* docs/ && touch dist/.nojekyll docs/.nojekyll",
-    "preview": "vite preview",
-    "deploy": "npm run build && git subtree split --prefix dist -b gh-pages && git push -f origin gh-pages"
+    "build": "tsc && vite build && touch dist/.nojekyll",
+    "preview": "vite preview"
   },
   "devDependencies": {
     "@types/canvas-confetti": "^1.9.0",
     "@types/three": "^0.187.0",
     "typescript": "~7.0.2",
-    "vite": "^8.3.6"
+    "vite": "^8.3.6",
+    "vite-plugin-wasm": "^3.6.0"
   },
   "dependencies": {
-    "@dimforge/rapier3d-compat": "^0.21.0",
+    "@dimforge/rapier3d": "^0.21.0",
     "canvas-confetti": "^1.9.4",
     "three": "^0.187.0"
   }

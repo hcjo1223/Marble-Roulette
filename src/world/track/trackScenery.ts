@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import RAPIER from '@dimforge/rapier3d-compat';
+import RAPIER from '@dimforge/rapier3d';
 import {
   TRACK_SLOPE,
   envCollisionGroup,
@@ -302,7 +302,6 @@ export function buildCurvedTrackAndScenery(
       );
       wallMesh.position.set(wx, wy, wz);
       wallMesh.quaternion.copy(sideWallQuat);
-      wallMesh.castShadow = true;
       wallMesh.receiveShadow = true;
       ctx.courseGroup.add(wallMesh);
 
@@ -510,11 +509,11 @@ export function buildCurvedTrackAndScenery(
     addArchSign(ctx, 120, '💩 익룡 똥 폭격 & 화산 계곡', '#d97706', '#fef3c7', '#78350f');
     addArchSign(ctx, 182, '🌋 최후의 공룡 협곡 스퍼트!', '#7c2d12', '#ffedd5', '#431407');
   } else if (isPool) {
-    addArchSign(ctx, 11, '🏊 수영장 스플래시 출발!', '#0891b2', '#ecfeff', '#0e7490');
-    addArchSign(ctx, 43, '🛟 튜브 범퍼 슬라럼', '#f472b6', '#fdf2f8', '#be185d');
+    addArchSign(ctx, 11, '🏊 수영장 스플래시 & 튜브 출발!', '#0891b2', '#ecfeff', '#0e7490');
+    addArchSign(ctx, 43, '🛟 튜브 탑승 & 범퍼 슬라럼', '#f472b6', '#fdf2f8', '#be185d');
     addArchSign(ctx, 66, '💧 물벼락 낙하 존!', '#0284c7', '#e0f2fe', '#075985');
-    addArchSign(ctx, 84, '🌊 물살 컨베이어', '#22d3ee', '#f0fdff', '#0e7490');
-    addArchSign(ctx, 101, '🏄 빅웨이브 파도 풀!', '#a855f7', '#f5f3ff', '#6b21a8');
+    addArchSign(ctx, 84, '🌊 물살 컨베이어 & 물대포', '#22d3ee', '#f0fdff', '#0e7490');
+    addArchSign(ctx, 101, '🏄 파도 존 · 물살 밀림 풀!', '#a855f7', '#f5f3ff', '#6b21a8');
   } else if (isFg) {
     addArchSign(ctx, 11, '🎪 폴가이즈 스타트!', '#ec4899', '#fdf2f8', '#be185d');
     addArchSign(ctx, 43, '🫧 에어 쿠션 범퍼 존', '#0ea5b7', '#ecfeff', '#0f766e');

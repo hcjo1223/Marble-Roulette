@@ -6,6 +6,24 @@ import {
   getQuickFlickButtonConfig,
   getQuickMapButtonConfig,
 } from '../game/mapThemeConfig';
+import type { GeneratedShareCard } from './shareCard';
+
+interface LeaderRowNodes {
+  row: HTMLDivElement;
+  rankSpan: HTMLSpanElement;
+  nameSpan: HTMLSpanElement;
+  metaSpan: HTMLSpanElement;
+  dot: HTMLDivElement;
+  lastRankText: string;
+  lastMetaText: string;
+  lastMetaClass: string;
+  lastRowClass: string;
+}
+
+const leaderNodesMap = new Map<string, LeaderRowNodes>();
+let latestShareCard: GeneratedShareCard | null = null;
+let shareListenersBound = false;
+let latestClassSummaryText = '';
 
 export function showHudBanner(msg: string): void {
   const banner = document.getElementById('flick-banner');
@@ -137,6 +155,10 @@ export function renderLeaderboardUI(
   if (rebuildDOM) {
     listEl.innerHTML = '';
     dotsEl.innerHTML = '';
+    leaderNodesMap.clear();
+
+    const listFrag = document.createDocumentFragment();
+    const dotsFrag = document.createDocumentFragment();
 
     for (const r of sortedRacers) {
       const item = document.createElement('div');
@@ -145,59 +167,108 @@ export function renderLeaderboardUI(
       item.addEventListener('click', () => {
         onSelectRacer(r.id);
       });
-      listEl.appendChild(item);
+
+      const rankSpan = document.createElement('span');
+      rankSpan.className = 'leader-rank';
+
+      const swatchSpan = document.createElement('span');
+      swatchSpan.className = 'leader-swatch';
+      swatchSpan.style.background = r.color;
+
+      const nameSpan = document.createElement('span');
+      nameSpan.className = 'leader-name';
+      nameSpan.textContent = r.name;
+
+      const metaSpan = document.createElement('span');
+      metaSpan.className = 'leader-meta';
+
+      item.append(rankSpan, swatchSpan, nameSpan, metaSpan);
+      listFrag.appendChild(item);
 
       const dot = document.createElement('div');
       dot.className = 'minimap-dot';
       dot.id = `minimap-dot-${r.id}`;
       dot.style.backgroundColor = r.color;
-      dotsEl.appendChild(dot);
+      dotsFrag.appendChild(dot);
+
+      leaderNodesMap.set(r.id, {
+        row: item,
+        rankSpan,
+        nameSpan,
+        metaSpan,
+        dot,
+        lastRankText: '',
+        lastMetaText: '',
+        lastMetaClass: '',
+        lastRowClass: '',
+      });
     }
+
+    listEl.appendChild(listFrag);
+    dotsEl.appendChild(dotsFrag);
   }
 
-  sortedRacers.forEach((r, idx) => {
+  for (let idx = 0; idx < sortedRacers.length; idx++) {
+    const r = sortedRacers[idx];
     const rank = idx + 1;
     r.rank = rank;
     r.isTargetRankCandidate = rank === targetRank;
 
-    const rowEl = document.getElementById(`leader-row-${r.id}`);
-    if (rowEl) {
-      rowEl.style.order = String(rank);
-      rowEl.className = 'leader-item';
-      if (rank === 1) rowEl.classList.add('rank-1');
-      else if (rank === 2) rowEl.classList.add('rank-2');
-      else if (rank === 3) rowEl.classList.add('rank-3');
-      if (focusedRacerId === r.id) rowEl.classList.add('focused');
-      if (rank === targetRank) rowEl.classList.add('target-winner');
+    const nodes = leaderNodesMap.get(r.id);
+    if (nodes) {
+      nodes.row.style.order = String(rank);
 
-      let badgeHtml = '';
-      if (r.state === 'FINISHED') {
-        badgeHtml = `<span class="state-pill goal">🏁</span>`;
-      } else if (r.state === 'RAGDOLL') {
-        badgeHtml = `<span class="state-pill ragdoll">💫</span>`;
-      } else if (r.isSlowed()) {
-        badgeHtml = `<span class="state-pill ragdoll">💩</span>`;
-      } else if (r.isBoosted()) {
-        badgeHtml = `<span class="state-pill goal">⚡</span>`;
+      let rowClass = 'leader-item';
+      if (rank === 1) rowClass += ' rank-1';
+      else if (rank === 2) rowClass += ' rank-2';
+      else if (rank === 3) rowClass += ' rank-3';
+      if (focusedRacerId === r.id) rowClass += ' focused';
+      if (rank === targetRank) rowClass += ' target-winner';
+      if (nodes.lastRowClass !== rowClass) {
+        nodes.row.className = rowClass;
+        nodes.lastRowClass = rowClass;
       }
 
-      rowEl.innerHTML = `
-        <span class="leader-rank">${rank}</span>
-        <span class="leader-swatch" style="background:${r.color}"></span>
-        <span class="leader-name">${r.name}</span>
-        <span class="leader-meta">${badgeHtml}</span>
-      `;
-    }
+      const rankStr = String(rank);
+      if (nodes.lastRankText !== rankStr) {
+        nodes.rankSpan.textContent = rankStr;
+        nodes.lastRankText = rankStr;
+      }
 
-    const dotEl = document.getElementById(`minimap-dot-${r.id}`);
-    if (dotEl) {
+      let metaText = '';
+      let metaClass = 'leader-meta';
+      if (r.state === 'FINISHED') {
+        metaText = '🏁';
+        metaClass = 'leader-meta state-pill goal';
+      } else if (r.state === 'RAGDOLL') {
+        metaText = '💫';
+        metaClass = 'leader-meta state-pill ragdoll';
+      } else if (r.isRidingTube()) {
+        metaText = '🛟';
+        metaClass = 'leader-meta state-pill goal';
+      } else if (r.isSlowed()) {
+        metaText = '💩';
+        metaClass = 'leader-meta state-pill ragdoll';
+      } else if (r.isBoosted()) {
+        metaText = '⚡';
+        metaClass = 'leader-meta state-pill goal';
+      }
+
+      if (nodes.lastMetaText !== metaText) {
+        nodes.metaSpan.textContent = metaText;
+        nodes.lastMetaText = metaText;
+      }
+      if (nodes.lastMetaClass !== metaClass) {
+        nodes.metaSpan.className = metaClass;
+        nodes.lastMetaClass = metaClass;
+      }
+
       const pct = Math.min(97, Math.max(2, (r.getPosition().z / finishZ) * 93));
-      dotEl.style.left = `${pct}%`;
-      dotEl.style.zIndex = rank === targetRank ? '10' : '2';
+      nodes.dot.style.left = `${pct.toFixed(1)}%`;
+      nodes.dot.style.zIndex = rank === targetRank ? '10' : '2';
     }
-  });
+  }
 
-  // Update Zone Badge based on leader's current track position
   if (sortedRacers.length > 0) {
     const leadZ = sortedRacers[0].getPosition().z;
     const zoneEl = document.getElementById('hud-zone-badge');
@@ -207,18 +278,88 @@ export function renderLeaderboardUI(
   }
 }
 
+function ensureShareCardListeners(): void {
+  if (shareListenersBound) return;
+  shareListenersBound = true;
+
+  const statusEl = document.getElementById('share-card-status');
+  const setStatus = (msg: string) => {
+    if (statusEl) {
+      statusEl.textContent = msg;
+      setTimeout(() => {
+        if (statusEl.textContent === msg) statusEl.textContent = '';
+      }, 2600);
+    }
+  };
+
+  document.getElementById('btn-share-download')?.addEventListener('click', () => {
+    if (!latestShareCard) return;
+    const a = document.createElement('a');
+    a.href = latestShareCard.dataUrl;
+    a.download = latestShareCard.filename;
+    a.click();
+    setStatus('저장 완료!');
+  });
+
+  document.getElementById('btn-share-copy')?.addEventListener('click', async () => {
+    if (!latestShareCard?.blob) return;
+    try {
+      if (typeof ClipboardItem !== 'undefined' && navigator.clipboard?.write) {
+        await navigator.clipboard.write([
+          new ClipboardItem({ 'image/png': latestShareCard.blob }),
+        ]);
+        setStatus('이미지 복사됨!');
+      } else {
+        setStatus('브라우저 미지원 · 저장 이용');
+      }
+    } catch {
+      setStatus('복사 권한 없음 · 저장 이용');
+    }
+  });
+
+  document.getElementById('btn-share-native')?.addEventListener('click', async () => {
+    if (!latestShareCard?.blob || !navigator.share) return;
+    try {
+      const file = new File([latestShareCard.blob], latestShareCard.filename, {
+        type: 'image/png',
+      });
+      await navigator.share({
+        title: '총총 래그돌 달리기 3D 결과',
+        text: '방금 레이스 당첨 결과 공유 카드!',
+        files: [file],
+      });
+    } catch {
+      // Cancelled by user
+    }
+  });
+
+  document.getElementById('btn-copy-class-log')?.addEventListener('click', async () => {
+    if (!latestClassSummaryText) return;
+    try {
+      await navigator.clipboard.writeText(latestClassSummaryText);
+      setStatus('수업 기록 복사됨!');
+    } catch {
+      setStatus('클립보드 복사 실패');
+    }
+  });
+}
+
 export function showWinnerModal(
   winner: RagdollRacer,
   sortedRacers: RagdollRacer[],
   winningRule: WinningRule,
   targetRank: number,
-  raceElapsed: number
+  raceElapsed: number,
+  mapTheme: MapTheme = 'PLAYGROUND',
+  screenshotDataUrl: string | null = null
 ): void {
   confetti({
     particleCount: 110,
     spread: 80,
     origin: { y: 0.55 },
   });
+
+  ensureShareCardListeners();
 
   const modal = document.getElementById('winner-modal')!;
   const badge = document.getElementById('modal-rule-badge')!;
@@ -228,6 +369,9 @@ export function showWinnerModal(
   const statTime = document.getElementById('modal-winner-time')!;
   const statRagdolls = document.getElementById('modal-winner-ragdolls')!;
   const rankList = document.getElementById('modal-rankings-list')!;
+  const previewImg = document.getElementById('share-card-preview') as HTMLImageElement | null;
+  const nativeBtn = document.getElementById('btn-share-native');
+  const statusEl = document.getElementById('share-card-status');
 
   badge.textContent =
     winningRule === 'FIRST'
@@ -258,6 +402,58 @@ export function showWinnerModal(
     `;
     rankList.appendChild(row);
   });
+
+  const perf = window.__MARBLE_PERF__;
+  latestClassSummaryText = [
+    `[수업 실사용 레이스 기록 - ${new Date().toLocaleString('ko-KR')}]`,
+    `- 맵: ${mapTheme} | 참가자: ${sortedRacers.length}명 | 방식: ${winningRule} (#${targetRank})`,
+    `- 당첨자: ${winner.name} (${(winner.finishTime || raceElapsed).toFixed(2)}초, 피격 ${winner.ragdollCount}회)`,
+    perf
+      ? `- 실측 프레임: ${perf.fps} FPS (평균 ${perf.frameMs.avg}ms / p95 ${perf.frameMs.p95}ms / 물리 ${perf.breakdownMs.worldStep}ms)`
+      : `- 화면: ${window.innerWidth}x${window.innerHeight} (DPR ${window.devicePixelRatio})`,
+    `- 학생 반응 / 메모: `,
+  ].join('\n');
+
+  if (previewImg) {
+    previewImg.classList.add('hidden');
+  }
+  if (statusEl) {
+    statusEl.textContent = '카드 생성 중...';
+  }
+  latestShareCard = null;
+
+  import('./shareCard')
+    .then(({ generateFallguysShareCard }) =>
+      generateFallguysShareCard({
+        winner,
+        sortedRacers,
+        winningRule,
+        targetRank,
+        raceElapsed,
+        mapTheme,
+        screenshotDataUrl,
+      })
+    )
+    .then((card) => {
+      latestShareCard = card;
+      if (previewImg) {
+        previewImg.src = card.dataUrl;
+        previewImg.classList.remove('hidden');
+      }
+      if (statusEl) {
+        statusEl.textContent = '';
+      }
+      if (nativeBtn && typeof navigator.share === 'function' && card.blob) {
+        const testFile = new File([card.blob], card.filename, { type: 'image/png' });
+        const canShareFiles =
+          typeof navigator.canShare === 'function' ? navigator.canShare({ files: [testFile] }) : true;
+        nativeBtn.classList.toggle('hidden', !canShareFiles);
+      }
+    })
+    .catch((err) => {
+      console.warn('Share card generation failed:', err);
+      if (statusEl) statusEl.textContent = '';
+    });
 
   modal.classList.remove('hidden');
 }

@@ -266,3 +266,47 @@ export function createSlimeTexture(): THREE.CanvasTexture {
   tex.wrapT = THREE.RepeatWrapping;
   return tex;
 }
+
+export function createWaterWaveTexture(dirX: number): THREE.CanvasTexture {
+  const canvas = document.createElement('canvas');
+  canvas.width = 128;
+  canvas.height = 128;
+  const ctx = canvas.getContext('2d')!;
+
+  const grad = ctx.createLinearGradient(0, 0, 128, 0);
+  grad.addColorStop(0, '#0284c7');
+  grad.addColorStop(0.5, '#0ea5e9');
+  grad.addColorStop(1, '#38bdf8');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, 128, 128);
+
+  // White water ripple chevrons pointing in dirX (+1 right / -1 left)
+  ctx.strokeStyle = 'rgba(240, 253, 255, 0.88)';
+  ctx.lineWidth = 10;
+  ctx.lineCap = 'round';
+  ctx.lineJoin = 'round';
+  for (const cy of [34, 94]) {
+    ctx.beginPath();
+    if (dirX >= 0) {
+      ctx.moveTo(28, cy - 20);
+      ctx.lineTo(68, cy);
+      ctx.lineTo(28, cy + 20);
+      ctx.moveTo(68, cy - 20);
+      ctx.lineTo(104, cy);
+      ctx.lineTo(68, cy + 20);
+    } else {
+      ctx.moveTo(100, cy - 20);
+      ctx.lineTo(60, cy);
+      ctx.lineTo(100, cy + 20);
+      ctx.moveTo(60, cy - 20);
+      ctx.lineTo(24, cy);
+      ctx.lineTo(60, cy + 20);
+    }
+    ctx.stroke();
+  }
+
+  const tex = new THREE.CanvasTexture(canvas);
+  tex.wrapS = THREE.RepeatWrapping;
+  tex.wrapT = THREE.RepeatWrapping;
+  return tex;
+}

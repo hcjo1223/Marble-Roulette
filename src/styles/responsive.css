@@ -70,13 +70,14 @@
     pointer-events: none;
   }
 
-  #setup-panel {
+  #setup-panel,
+  #map-editor-panel {
     top: calc(max(10px, env(safe-area-inset-top)) + 56px);
     left: 12px;
     right: 12px;
     width: auto;
     max-height: calc(100dvh - 196px);
-    gap: 17px;
+    gap: 14px;
   }
 
   #setup-panel.collapsed {

@@ -8,6 +8,7 @@ export class CameraDirector {
   public mode: CameraMode = 'LEAD';
   public focusedRacerId: string | null = null;
   public isClimaxSlowMo: boolean = false;
+  public editorMode: boolean = false;
   public onCanvasTap?: (clientX: number, clientY: number) => void;
 
   private currentPos: THREE.Vector3 = new THREE.Vector3(0, 14, -12);
@@ -68,7 +69,7 @@ export class CameraDirector {
           e.clientY - this.pointerDownPos.y
         );
         const elapsed = performance.now() - this.pointerDownTime;
-        if (moveDist < 9 && elapsed < 280 && this.onCanvasTap) {
+        if (moveDist < 9 && elapsed < 280 && !this.editorMode && this.onCanvasTap) {
           this.onCanvasTap(e.clientX, e.clientY);
         }
       }
@@ -146,6 +147,10 @@ export class CameraDirector {
     if (onModeChange) onModeChange(mode);
   }
 
+  public setTopPanZ(z: number): void {
+    this.topPanZ = Math.max(0, Math.min(this.currentFinishZ + 4, z));
+  }
+
   public focusOnRacer(racerId: string, onModeChange?: (mode: CameraMode) => void): void {
     this.focusedRacerId = racerId;
     this.orbitYaw = 0;
@@ -186,15 +191,16 @@ export class CameraDirector {
     } else if (this.mode === 'TOP') {
       // Top-down tactical overview of the course
       let centerZ = this.topPanZ;
-      if (!this.isDragging && pool.length > 0) {
+      if (!this.isDragging && !this.editorMode && pool.length > 0) {
         const sumZ = pool.reduce((acc, r) => acc + r.getPosition().z, 0);
         centerZ = sumZ / pool.length;
         this.topPanZ = THREE.MathUtils.lerp(this.topPanZ, centerZ, realDt * 3);
       }
       const cx = trackCenterXAtZ ? trackCenterXAtZ(this.topPanZ) : 0;
       const baseY = -Math.tan(0.088) * this.topPanZ;
-      desiredPos.set(cx, baseY + 46 * portraitScale, this.topPanZ - 14);
-      desiredLook.set(cx, baseY, this.topPanZ + 8);
+      const topHeight = this.editorMode ? 36 * portraitScale : 46 * portraitScale;
+      desiredPos.set(cx, baseY + topHeight, this.topPanZ - 14);
+      desiredLook.set(cx, baseY, this.topPanZ + 6);
     } else if (this.mode === 'LAST') {
       // Follow Last Place racer
       const lastRacer = pool[pool.length - 1];

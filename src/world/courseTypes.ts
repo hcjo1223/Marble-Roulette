@@ -1,5 +1,5 @@
 import type * as THREE from 'three';
-import type RAPIER from '@dimforge/rapier3d-compat';
+import type RAPIER from '@dimforge/rapier3d';
 import type { MapTheme, ObstacleDensity } from '../types';
 import type { RagdollRacer } from '../entities/RagdollRacer';
 
@@ -261,6 +261,37 @@ export interface PoolSplashRingData {
   mesh: THREE.Mesh;
   life: number;
   maxLife: number;
+}
+
+export interface PoolRideTubePadData {
+  z: number;
+  offsetX: number;
+  pos: THREE.Vector3;
+  colorHex: number;
+  mesh: THREE.Group;
+  ringMesh: THREE.Mesh;
+  respawnTimer: number;
+}
+
+export interface PoolWaterJetData {
+  z: number;
+  side: number;
+  dirX: number;
+  sprayMesh: THREE.Mesh;
+  phase: number;
+  hitCooldowns: Map<string, number>;
+}
+
+export interface WaveCurrentZoneData {
+  zMin: number;
+  zMax: number;
+  dirX: number;
+  pushForce: number;
+  freq: number;
+  phase: number;
+  texture: THREE.CanvasTexture;
+  waveWallMesh: THREE.Group;
+  hitCooldowns: Map<string, number>;
 }
 
 export interface FallguysCushionData {
