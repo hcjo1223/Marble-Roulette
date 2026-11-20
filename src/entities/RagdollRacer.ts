@@ -1,6 +1,7 @@
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import type { MapTheme, ParticipantEntry, RacerState } from '../types';
+import { hasFloorPitAtZ } from '../world/courseMath';
 import {
   type FaceMode,
   type RacerBuffState,
@@ -25,6 +26,7 @@ export class RagdollRacer {
   public readonly accentColor: string;
   public readonly isKartMode: boolean;
   public readonly isJellybean: boolean;
+  private readonly mapTheme: MapTheme;
   private readonly lowCostMode: boolean;
 
   public state: RacerState = 'WAITING';
@@ -114,6 +116,7 @@ export class RagdollRacer {
     this.accentColor = entry.accentColor;
     this.isKartMode = mapTheme === 'DINOSAUR';
     this.isJellybean = mapTheme === 'FALLGUYS';
+    this.mapTheme = mapTheme;
     this.lowCostMode = lowCostMode;
     this.world = world;
     this.scene = scene;
@@ -707,7 +710,8 @@ export class RagdollRacer {
 
     if (!this.isKartMode) {
       this.jumpCooldown -= dt;
-      const nearGround = pos.y - expectedFloorY < 2.15 && Math.abs(vel.y) < 2.2;
+      const floorDelta = pos.y - expectedFloorY;
+      const nearGround = floorDelta > 0.2 && floorDelta < 2.15 && Math.abs(vel.y) < 2.2;
       if (this.jumpCooldown <= 0 && nearGround) {
         this.jumpCooldown = 1.4 + Math.random() * 2.4;
         const jumpImpulseY = 18 + Math.random() * 8;
@@ -725,7 +729,11 @@ export class RagdollRacer {
       }
     }
 
-    if (lateralDist <= halfWidth + 0.15 && pos.y < expectedFloorY + 0.55) {
+    if (
+      !hasFloorPitAtZ(pos.z, this.mapTheme) &&
+      lateralDist <= halfWidth + 0.15 &&
+      pos.y < expectedFloorY + 0.55
+    ) {
       this.torsoBody.setTranslation(
         { x: pos.x, y: expectedFloorY + 1.15, z: pos.z },
         true

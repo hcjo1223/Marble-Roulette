@@ -58,6 +58,7 @@ export class ObstacleCourse {
   public onFinishFlick?: (racer: RagdollRacer, flickNumber: number, isManual: boolean) => void;
   public onPoolSplash?: (racer: RagdollRacer, kind: 'BALLOON' | 'DUCK') => void;
   public onTubeMount?: (racer: RagdollRacer) => void;
+  public onWaveHit?: (racer: RagdollRacer, isTubeRider: boolean) => void;
 
   constructor(
     world: RAPIER.World,
@@ -108,6 +109,10 @@ export class ObstacleCourse {
     this.poolCourse.onTubeMount = (racer) => {
       this.crowd.triggerExcitement(0.65, 1.5);
       this.onTubeMount?.(racer);
+    };
+    this.poolCourse.onWaveHit = (racer, isTubeRider) => {
+      this.crowd.triggerExcitement(0.85, 1.8);
+      this.onWaveHit?.(racer, isTubeRider);
     };
 
     const sceneryBuilder =

@@ -100,7 +100,7 @@ export class DinosaurCourseSystem {
     });
   }
 
-  private spawnPoopPuddle(x: number, y: number, z: number, life: number = 7.5): void {
+  private spawnPoopPuddle(x: number, y: number, z: number, life: number = 5.0): void {
     // Limit simultaneous active poop puddles to keep frame rate crisp
     if (this.poopPuddles.length >= 24) {
       const oldest = this.poopPuddles.shift();
@@ -175,7 +175,7 @@ export class DinosaurCourseSystem {
     for (const s of spots) {
       const wx = getTrackCenterX(s.z) + s.offset;
       const wy = getTrackHeightAtZ(s.z);
-      this.spawnPoopPuddle(wx, wy, s.z, 18.0);
+      this.spawnPoopPuddle(wx, wy, s.z, 5.0);
     }
   }
 
@@ -566,7 +566,7 @@ export class DinosaurCourseSystem {
       if (fp.y <= floorY + 0.16) {
         this.ctx.courseGroup.remove(fp.mesh);
         this.fallingPoops.splice(i, 1);
-        this.spawnPoopPuddle(fp.x, floorY, fp.z, 9.0);
+        this.spawnPoopPuddle(fp.x, floorY, fp.z, 5.0);
         particles.spawnHitBurst(new THREE.Vector3(fp.x, floorY + 0.25, fp.z), '#713f12', 6);
       }
     }

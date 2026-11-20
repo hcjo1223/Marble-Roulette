@@ -67,6 +67,10 @@ export function getTrackHalfWidthAtZ(z: number, mapTheme: MapTheme): number {
   return 9.0;
 }
 
+export function hasFloorPitAtZ(z: number, mapTheme: MapTheme): boolean {
+  return mapTheme === 'FALLGUYS' && z >= 104 && z <= 120;
+}
+
 export function getZoneLabelAtZ(z: number, mapTheme: MapTheme, finishZ: number): string {
   if (mapTheme === 'TAEKWONDO') {
     if (z < 42) return '🥋 태비태권도장';
@@ -94,7 +98,7 @@ export function getZoneLabelAtZ(z: number, mapTheme: MapTheme, finishZ: number):
     if (z < 42) return '🫧 에어 쿠션 범퍼 존';
     if (z < 72) return '🌀 대형 회전 빔 점프';
     if (z < 100) return '🥊 풍선 펀치월 · 피스톤';
-    if (z < finishZ) return '🟢 슬라임 가속 램프';
+    if (z < finishZ) return '🟨 사라지는 바닥 존';
     return '👑 왕관 결승선!';
   }
   if (z < 42) return '🏠 교실';
