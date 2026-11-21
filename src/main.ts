@@ -42,6 +42,11 @@ import {
 } from './ui/raceHud';
 
 
+/** 결승 직전 자동 슬로모션의 최대 누적 시간(실제 초). 보통은 당첨 대상이 통과하는 순간 끝난다. */
+const AUTO_SLOWMO_MAX_SEC = 30;
+/** 당첨 대상이 결승선 이 거리(m) 안에 있을 때만 실제로 슬로모션을 건다 (시작 조건 9m + 여유 1m). */
+const AUTO_SLOWMO_RANGE_Z = 10;
+
 /** 물리 시뮬레이션 고정 스텝(초). */
 const PHYSICS_STEP = 1 / 60;
 /** 한 렌더 프레임에서 따라잡을 수 있는 최대 물리 스텝 수(0.2초 분량 = 5fps까지 실시간 유지). */
@@ -76,7 +81,6 @@ class RagdollDerbyGame {
   private perfTelemetry!: PerfTelemetry;
   private mapEditor: MapEditor | null = null;
   private activeCustomLayout: CustomCourseLayout | null = null;
-  private tubeBannerCount: number = 0;
 
   private racers: RagdollRacer[] = [];
   private sortedRacers: RagdollRacer[] = [];
@@ -92,7 +96,10 @@ class RagdollDerbyGame {
   private countdownTimer: number | null = null;
   private raceElapsed: number = 0;
   private manualSlowMo: boolean = false;
+  /** 결승 자동 슬로모션 남은 허용 시간(실제 초). 0보다 크면 "결승 슬로모션 모드". */
   private autoSlowMoTimer: number = 0;
+  /** 지금 실제로 슬로모션이 걸려 있는지 (대상이 결승 구간 밖이면 잠시 해제). */
+  private autoSlowMoActive: boolean = false;
   private hasTriggeredAutoSlowMo: boolean = false;
   private flickBannerTimer: number = 0;
   private winnerAnnounced: boolean = false;
@@ -278,64 +285,44 @@ class RagdollDerbyGame {
   }
 
   private bindCourseCallbacks(): void {
-    const getLeadZ = () => this.sortedRacers[0]?.getPosition().z ?? 0;
-
     this.course.onFinishFlick = (racer, flickNum, isManual) => {
       this.showBannerMessage(
         getFinishFlickBannerMessage(this.mapTheme, racer.name, flickNum, isManual)
       );
     };
 
+    // 수영장 HUD 원칙: 하이라이트 미니 화면은 "메인 화면에 안 보이는" 물벼락·오리 피격만 보여 준다.
+    // 튜브 탑승·파도 피격은 메인 화면 연출(파티클·관중)로 충분해 배너·미니 화면을 띄우지 않는다.
     this.course.onPoolSplash = (racer, kind) => {
-      const icon = kind === 'DUCK' ? '🦆' : '💦';
-      this.showBannerMessage(
-        `${icon} 물벼락 강타! [${racer.name}] 크게 튕겨나갔다! 대역전 찬스!`,
-        2.0
-      );
-      this.highlightPip?.tryTrigger({
-        racer,
-        kind: kind === 'DUCK' ? 'DUCK' : 'SPLASH',
-        subtitle: kind === 'DUCK' ? '거대 고무오리 직격! 데굴데굴!' : '물풍선 맞고 빙글빙글!',
-        totalRacers: this.racers.length,
-        winningRule: this.winningRule,
-        targetRank: this.targetRank,
-        leadZ: getLeadZ(),
-        finishZ: this.course.finishZ,
-      });
-    };
-
-    this.course.onTubeMount = (racer) => {
-      if (this.tubeBannerCount < 3) {
-        this.tubeBannerCount++;
+      const isDuck = kind === 'DUCK';
+      const hiddenFromMainCam = !this.cameraDirector.isOnScreen(racer.getPosition());
+      const pipShown =
+        hiddenFromMainCam &&
+        this.highlightPip.tryTrigger({
+          racer,
+          kind: isDuck ? 'DUCK' : 'SPLASH',
+          subtitle: isDuck ? '거대 고무오리 직격! 데굴데굴!' : '물풍선 맞고 빙글빙글!',
+          suppress: this.isHighlightSuppressed(),
+        });
+      // 미니 화면이 떴으면 배너는 생략 (같은 사건을 두 번 알리지 않음)
+      if (!pipShown) {
         this.showBannerMessage(
-          `🛟 물놀이 튜브 탑승! [${racer.name}] 파도를 타며 고속 서핑!`,
-          1.8
+          `${isDuck ? '🦆' : '💦'} 물벼락 강타! [${racer.name}] 크게 튕겨나갔다! 대역전 찬스!`,
+          2.0
         );
       }
-      this.highlightPip?.tryTrigger({
-        racer,
-        kind: 'TUBE',
-        subtitle: '튜브 장착! 파도 타고 역전 질주!',
-        totalRacers: this.racers.length,
-        winningRule: this.winningRule,
-        targetRank: this.targetRank,
-        leadZ: getLeadZ(),
-        finishZ: this.course.finishZ,
-      });
     };
 
-    this.course.onWaveHit = (racer, isTubeRider) => {
-      this.highlightPip?.tryTrigger({
-        racer,
-        kind: 'WAVE',
-        subtitle: isTubeRider ? '튜브 타고 대왕 파도 점프!' : '거친 파도에 휩쓸렸다!',
-        totalRacers: this.racers.length,
-        winningRule: this.winningRule,
-        targetRank: this.targetRank,
-        leadZ: getLeadZ(),
-        finishZ: this.course.finishZ,
-      });
-    };
+    this.course.onTubeMount = undefined;
+    this.course.onWaveHit = undefined;
+  }
+
+  /** 결승 직전(아직 아무도 통과 전, 미완주 선두가 결승 18m 이내)과 결승 슬로모션 중에는 미니 화면을 띄우지 않는다. */
+  private isHighlightSuppressed(): boolean {
+    if (this.manualSlowMo || this.autoSlowMoTimer > 0) return true;
+    if (this.finishedRacers.length > 0) return false;
+    const lead = this.sortedRacers.find((r) => r.state !== 'FINISHED');
+    return Boolean(lead && lead.getPosition().z >= this.course.finishZ - 18);
   }
 
   private rebuildCourse(): void {
@@ -445,12 +432,12 @@ class RagdollDerbyGame {
     this.particles.clear();
     this.course.resetCourseState();
 
-    this.tubeBannerCount = 0;
     this.highlightPip?.reset();
 
     this.phase = 'READY';
     this.raceElapsed = 0;
     this.autoSlowMoTimer = 0;
+    this.autoSlowMoActive = false;
     this.hasTriggeredAutoSlowMo = false;
     this.flickBannerTimer = 0;
     this.winnerAnnounced = false;
@@ -884,7 +871,7 @@ class RagdollDerbyGame {
       if (this.manualSlowMo) {
         this.sound.playSlowMoTrigger();
       }
-      this.setSlowMoVisuals(this.manualSlowMo || this.autoSlowMoTimer > 0);
+      this.setSlowMoVisuals(this.manualSlowMo || this.autoSlowMoActive);
     };
 
     document.getElementById('btn-slowmo-toggle')!.addEventListener('click', toggleManualSlowMo);
@@ -921,6 +908,7 @@ class RagdollDerbyGame {
   private announceWinner(winner: RagdollRacer): void {
     this.winnerAnnounced = true;
     this.autoSlowMoTimer = 0;
+    this.autoSlowMoActive = false;
     this.manualSlowMo = false;
     this.setSlowMoVisuals(false);
     this.highlightPip.hide(false);
@@ -975,9 +963,12 @@ class RagdollDerbyGame {
         (z >= finishZ - 3.2 && this.course.hasBeenFlicked(decisiveRacer.id));
       if (canSlowMo && z >= finishZ - 9.0 && z < finishZ) {
         this.hasTriggeredAutoSlowMo = true;
-        this.autoSlowMoTimer = 2.3;
+        // 당첨 대상(1등 당첨이면 1등)이 결승선을 통과해 announceWinner가 끌 때까지 유지.
+        // 함정에 맞아 한참 못 들어오는 경우를 대비한 안전 상한만 둔다.
+        this.autoSlowMoTimer = AUTO_SLOWMO_MAX_SEC;
         this.sound.playSlowMoTrigger();
         this.course.triggerCrowdExcitement(1.3, 2.8);
+        this.autoSlowMoActive = true;
         this.setSlowMoVisuals(true);
       }
     }
@@ -989,15 +980,27 @@ class RagdollDerbyGame {
       }
     }
 
+    // 결승 슬로모션: 당첨 대상이 결승선을 통과(announceWinner)할 때까지 유지한다.
+    // 단, 대상이 함정 등으로 결승 구간 밖으로 밀려나 있는 동안은 정상 속도로 돌리고,
+    // 다시 결승 구간에 들어오면 이어서 슬로모션을 건다. (슬로모션이 1분 넘게 늘어지는 것 방지)
     if (this.autoSlowMoTimer > 0) {
-      this.autoSlowMoTimer -= realDt;
-      if (this.autoSlowMoTimer <= 0 && !this.manualSlowMo) {
-        this.setSlowMoVisuals(false);
+      const inFinishApproach =
+        !decisiveRacer ||
+        decisiveRacer.state === 'FINISHED' ||
+        decisiveRacer.getPosition().z >= finishZ - AUTO_SLOWMO_RANGE_Z;
+      if (inFinishApproach) this.autoSlowMoTimer = Math.max(0, this.autoSlowMoTimer - realDt);
+      const active = this.autoSlowMoTimer > 0 && inFinishApproach;
+      if (active !== this.autoSlowMoActive) {
+        this.autoSlowMoActive = active;
+        if (!this.manualSlowMo) this.setSlowMoVisuals(active);
       }
+    } else if (this.autoSlowMoActive) {
+      this.autoSlowMoActive = false;
+      if (!this.manualSlowMo) this.setSlowMoVisuals(false);
     }
 
-    const isSlowMo = this.manualSlowMo || this.autoSlowMoTimer > 0;
-    const timeScale = isSlowMo ? 0.22 : this.highlightPip.getTimeScale();
+    const isSlowMo = this.manualSlowMo || this.autoSlowMoActive;
+    const timeScale = isSlowMo ? 0.22 : 1.0;
 
     // 고정 스텝 물리: 실제 경과 시간을 누적해 PHYSICS_STEP 단위로 시뮬레이션을 돌린다.
     // 프레임레이트와 무관하게 같은 실제 시간 동안 같은 게임 시간이 흐른다.
@@ -1117,14 +1120,11 @@ class RagdollDerbyGame {
       finishZ
     );
 
-    const leadZ = this.sortedRacers[0]?.getPosition().z ?? 0;
     this.highlightPip.update(
       realDt,
       this.racers,
       (z) => this.course.getTrackCenterX(z),
-      leadZ,
-      finishZ,
-      isSlowMo
+      this.isHighlightSuppressed()
     );
 
     const tUiStart = performance.now();

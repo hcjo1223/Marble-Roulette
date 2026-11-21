@@ -1,6 +1,5 @@
 import * as THREE from 'three';
 import type { RagdollRacer } from '../entities/RagdollRacer';
-import type { WinningRule } from '../types';
 
 export type HighlightEventKind = 'TUBE' | 'SPLASH' | 'DUCK' | 'WAVE';
 
@@ -8,8 +7,6 @@ interface HighlightVisualStyle {
   badge: string;
   title: string;
   headerClass: string;
-  slowDuration: number;
-  slowScale: number;
   priority: number;
 }
 
@@ -18,32 +15,24 @@ const HIGHLIGHT_STYLES: Record<HighlightEventKind, HighlightVisualStyle> = {
     badge: 'LIVE CAM',
     title: '🛟 튜브 부스터!',
     headerClass: 'pip-theme-tube',
-    slowDuration: 0.65,
-    slowScale: 0.62,
     priority: 1,
   },
   WAVE: {
     badge: 'LIVE CAM',
     title: '🌊 파도 존 돌입!',
     headerClass: 'pip-theme-wave',
-    slowDuration: 0.65,
-    slowScale: 0.6,
     priority: 2,
   },
   SPLASH: {
     badge: 'IMPACT!',
     title: '💦 물벼락 직격!',
     headerClass: 'pip-theme-splash',
-    slowDuration: 0.72,
-    slowScale: 0.56,
     priority: 3,
   },
   DUCK: {
     badge: 'IMPACT!',
     title: '🦆 오리 폭격!',
     headerClass: 'pip-theme-duck',
-    slowDuration: 0.72,
-    slowScale: 0.56,
     priority: 3,
   },
 };
@@ -52,11 +41,8 @@ export interface HighlightTriggerOptions {
   racer: RagdollRacer;
   kind: HighlightEventKind;
   subtitle: string;
-  totalRacers: number;
-  winningRule: WinningRule;
-  targetRank: number;
-  leadZ: number;
-  finishZ: number;
+  /** true면 띄우지 않는다 (결승 직전·결승 슬로모션 중 등 메인 화면에 집중해야 할 때). */
+  suppress: boolean;
 }
 
 export class HighlightPipDirector {
@@ -77,8 +63,6 @@ export class HighlightPipDirector {
   private activePriority = 0;
   private activeTimer = 0;
   private readonly displayDuration = 2.4;
-  private slowTimer = 0;
-  private slowScale = 1.0;
   private cooldownTimer = 0;
   private flashTimer = 0;
   private age = 0;
@@ -167,10 +151,14 @@ export class HighlightPipDirector {
     return setupOpen || editorOpen || modalOpen;
   }
 
+  /**
+   * 하이라이트 미니 화면 띄우기 시도.
+   * 메인 화면에 이미 보이는지는 호출하는 쪽(main)에서 걸러서, 안 보이는 장면만 들어온다.
+   */
   public tryTrigger(opts: HighlightTriggerOptions): boolean {
-    const { racer, kind, subtitle, totalRacers, winningRule, targetRank, leadZ, finishZ } = opts;
+    const { racer, kind, subtitle, suppress } = opts;
     if (racer.state === 'FINISHED') return false;
-    if (leadZ >= finishZ - 18) return false;
+    if (suppress) return false;
     if (this.isBlockedByOtherPanels()) return false;
 
     const style = HIGHLIGHT_STYLES[kind];
@@ -181,24 +169,10 @@ export class HighlightPipDirector {
       return false;
     }
 
-    // Rule-aware filtering in large races so side chaos far from prize spots doesn't spam
-    if (totalRacers >= 12) {
-      if (winningRule === 'LAST') {
-        const bottomCutoff = Math.max(1, Math.floor(totalRacers * 0.42));
-        if (racer.rank < bottomCutoff && kind === 'TUBE') return false;
-      } else {
-        const rankDist = Math.abs(racer.rank - targetRank);
-        const withinSpotlight = racer.rank <= 8 || rankDist <= 5 || leadZ - racer.getPosition().z < 20;
-        if (!withinSpotlight) return false;
-      }
-    }
-
     this.active = true;
     this.activeRacerId = racer.id;
     this.activePriority = style.priority;
     this.activeTimer = this.displayDuration;
-    this.slowTimer = style.slowDuration;
-    this.slowScale = style.slowScale;
     this.flashTimer = 0.22;
     this.age = 0;
 
@@ -234,8 +208,6 @@ export class HighlightPipDirector {
     this.activeRacerId = null;
     this.activePriority = 0;
     this.activeTimer = 0;
-    this.slowTimer = 0;
-    this.slowScale = 1.0;
     this.cardEl.classList.add('hidden');
     if (applyCooldown) {
       this.cooldownTimer = 4.8;
@@ -251,18 +223,11 @@ export class HighlightPipDirector {
     return this.active;
   }
 
-  public getTimeScale(): number {
-    if (!this.active || this.slowTimer <= 0) return 1.0;
-    return this.slowScale;
-  }
-
   public update(
     realDt: number,
     racers: RagdollRacer[],
     trackCenterXAtZ: (z: number) => number,
-    leadZ: number,
-    finishZ: number,
-    isMainClimaxActive: boolean
+    suppress: boolean
   ): void {
     if (this.cooldownTimer > 0 && !this.active) {
       this.cooldownTimer = Math.max(0, this.cooldownTimer - realDt);
@@ -270,16 +235,13 @@ export class HighlightPipDirector {
 
     if (!this.active) return;
 
-    if (isMainClimaxActive || leadZ >= finishZ - 16 || this.isBlockedByOtherPanels()) {
+    if (suppress || this.isBlockedByOtherPanels()) {
       this.hide(false);
       return;
     }
 
     this.age += realDt;
     this.activeTimer -= realDt;
-    if (this.slowTimer > 0) {
-      this.slowTimer = Math.max(0, this.slowTimer - realDt);
-    }
 
     if (this.flashTimer > 0) {
       this.flashTimer = Math.max(0, this.flashTimer - realDt);
