@@ -21,6 +21,10 @@ export const GROUP_LIMB = 0x0004;
 
 /** 리스폰 직후 넉백 면역 시간(초). */
 const RESPAWN_SHIELD_SEC = 1.5;
+/** 탑뷰 이름표 크기: 카메라 거리 / 이 값 (작을수록 크게). */
+const TOP_VIEW_LABEL_DIST_DIVISOR = 14;
+/** 탑뷰 이름표 최대 배율. */
+const TOP_VIEW_LABEL_MAX_SCALE = 5.5;
 /** 구제 이동 직후 넉백 면역 시간(초). */
 const RESCUE_SHIELD_SEC = 2.5;
 /** 튜브에서 내린 뒤 다시 탈 수 있을 때까지의 시간(초). */
@@ -1023,7 +1027,11 @@ export class RagdollRacer {
     this.updateBillboardLabel(true);
   }
 
-  public syncVisuals(isFocused: boolean, cameraPos?: THREE.Vector3): void {
+  /**
+   * @param isTopView 탑뷰(높은 곳에서 내려다보는 카메라)일 때 true.
+   *   이름표가 화면에서 일정한 크기로 크게 보이도록 거리 비례 상한을 풀어 준다.
+   */
+  public syncVisuals(isFocused: boolean, cameraPos?: THREE.Vector3, isTopView: boolean = false): void {
     const syncMeshToBody = (mesh: THREE.Mesh, body: RAPIER.RigidBody) => {
       const p = body.translation();
       const r = body.rotation();
@@ -1072,10 +1080,12 @@ export class RagdollRacer {
           cameraPos.z - torsoPos.z
         )
       : 14;
-    const distScale = Math.max(
-      isFocused ? 0.85 : 0.45,
-      Math.min(2.15, camDist / 13.2)
-    );
+    // 일반 카메라: 거리에 비례해 키우되 2.15배 상한.
+    // 탑뷰: 카메라가 46m 이상 떨어져 늘 상한에 걸려 이름이 작아 보이므로,
+    //       거리에 비례(화면상 크기 일정)하게 두고 일반 상한 대비 약 1.6배 크게 보이도록 한다.
+    const distScale = isTopView
+      ? THREE.MathUtils.clamp(camDist / TOP_VIEW_LABEL_DIST_DIVISOR, 2.15, TOP_VIEW_LABEL_MAX_SCALE)
+      : Math.max(isFocused ? 0.85 : 0.45, Math.min(2.15, camDist / 13.2));
     const labelMat = this.labelSprite.material as THREE.SpriteMaterial;
     labelMat.opacity = !isFocused && camDist < 5.2 ? Math.max(0.28, (camDist - 2.0) / 3.2) : 1.0;
     this.labelSprite.scale.set(2.3 * distScale, 0.65 * distScale, 1);
