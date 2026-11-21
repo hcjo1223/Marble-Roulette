@@ -42,10 +42,10 @@ import {
 } from './ui/raceHud';
 
 
-/** 결승 직전 자동 슬로모션의 최대 누적 시간(실제 초). 보통은 당첨 대상이 통과하는 순간 끝난다. */
-const AUTO_SLOWMO_MAX_SEC = 30;
-/** 당첨 대상이 결승선 이 거리(m) 안에 있을 때만 실제로 슬로모션을 건다 (시작 조건 9m + 여유 1m). */
-const AUTO_SLOWMO_RANGE_Z = 10;
+/** 결승 직전 자동 슬로모션 시간(실제 초). 끝나면 원래 속도로 돌아간다. */
+const AUTO_SLOWMO_SEC = 2.3;
+/** 결승 함정이 대상을 노리기 시작할 때 거는 슬로모션 시간(실제 초). 첫 함정·두 번째 함정 모두. */
+const FLICK_SLOWMO_SEC = 2.0;
 
 /** 물리 시뮬레이션 고정 스텝(초). */
 const PHYSICS_STEP = 1 / 60;
@@ -96,10 +96,8 @@ class RagdollDerbyGame {
   private countdownTimer: number | null = null;
   private raceElapsed: number = 0;
   private manualSlowMo: boolean = false;
-  /** 결승 자동 슬로모션 남은 허용 시간(실제 초). 0보다 크면 "결승 슬로모션 모드". */
+  /** 자동 슬로모션 남은 시간(실제 초). 결승 직전·결승 함정 때 걸린다. */
   private autoSlowMoTimer: number = 0;
-  /** 지금 실제로 슬로모션이 걸려 있는지 (대상이 결승 구간 밖이면 잠시 해제). */
-  private autoSlowMoActive: boolean = false;
   private hasTriggeredAutoSlowMo: boolean = false;
   private flickBannerTimer: number = 0;
   private winnerAnnounced: boolean = false;
@@ -285,6 +283,11 @@ class RagdollDerbyGame {
   }
 
   private bindCourseCallbacks(): void {
+    // 결승 함정이 대상을 노리기 시작하면 2초 슬로모션 (첫 함정부터 매번)
+    this.course.onFinishFlickStart = () => {
+      if (this.phase === 'RACING') this.startAutoSlowMo(FLICK_SLOWMO_SEC);
+    };
+
     this.course.onFinishFlick = (racer, flickNum, isManual) => {
       this.showBannerMessage(
         getFinishFlickBannerMessage(this.mapTheme, racer.name, flickNum, isManual)
@@ -437,7 +440,6 @@ class RagdollDerbyGame {
     this.phase = 'READY';
     this.raceElapsed = 0;
     this.autoSlowMoTimer = 0;
-    this.autoSlowMoActive = false;
     this.hasTriggeredAutoSlowMo = false;
     this.flickBannerTimer = 0;
     this.winnerAnnounced = false;
@@ -636,6 +638,18 @@ class RagdollDerbyGame {
     if (!target) {
       this.showBannerMessage(getManualFlickBusyMessage(this.mapTheme), 1.3);
     }
+  }
+
+  /** 자동 슬로모션 시작 (이미 걸려 있으면 남은 시간을 늘린다). */
+  private startAutoSlowMo(durationSec: number): void {
+    if (this.winnerAnnounced) return;
+    const wasActive = this.autoSlowMoTimer > 0;
+    this.autoSlowMoTimer = Math.max(this.autoSlowMoTimer, durationSec);
+    if (!wasActive) {
+      this.sound.playSlowMoTrigger();
+      this.course.triggerCrowdExcitement(1.3, 2.8);
+    }
+    this.setSlowMoVisuals(true);
   }
 
   private setSlowMoVisuals(active: boolean): void {
@@ -871,7 +885,7 @@ class RagdollDerbyGame {
       if (this.manualSlowMo) {
         this.sound.playSlowMoTrigger();
       }
-      this.setSlowMoVisuals(this.manualSlowMo || this.autoSlowMoActive);
+      this.setSlowMoVisuals(this.manualSlowMo || this.autoSlowMoTimer > 0);
     };
 
     document.getElementById('btn-slowmo-toggle')!.addEventListener('click', toggleManualSlowMo);
@@ -908,7 +922,6 @@ class RagdollDerbyGame {
   private announceWinner(winner: RagdollRacer): void {
     this.winnerAnnounced = true;
     this.autoSlowMoTimer = 0;
-    this.autoSlowMoActive = false;
     this.manualSlowMo = false;
     this.setSlowMoVisuals(false);
     this.highlightPip.hide(false);
@@ -963,13 +976,7 @@ class RagdollDerbyGame {
         (z >= finishZ - 3.2 && this.course.hasBeenFlicked(decisiveRacer.id));
       if (canSlowMo && z >= finishZ - 9.0 && z < finishZ) {
         this.hasTriggeredAutoSlowMo = true;
-        // 당첨 대상(1등 당첨이면 1등)이 결승선을 통과해 announceWinner가 끌 때까지 유지.
-        // 함정에 맞아 한참 못 들어오는 경우를 대비한 안전 상한만 둔다.
-        this.autoSlowMoTimer = AUTO_SLOWMO_MAX_SEC;
-        this.sound.playSlowMoTrigger();
-        this.course.triggerCrowdExcitement(1.3, 2.8);
-        this.autoSlowMoActive = true;
-        this.setSlowMoVisuals(true);
+        this.startAutoSlowMo(AUTO_SLOWMO_SEC);
       }
     }
 
@@ -980,26 +987,14 @@ class RagdollDerbyGame {
       }
     }
 
-    // 결승 슬로모션: 당첨 대상이 결승선을 통과(announceWinner)할 때까지 유지한다.
-    // 단, 대상이 함정 등으로 결승 구간 밖으로 밀려나 있는 동안은 정상 속도로 돌리고,
-    // 다시 결승 구간에 들어오면 이어서 슬로모션을 건다. (슬로모션이 1분 넘게 늘어지는 것 방지)
     if (this.autoSlowMoTimer > 0) {
-      const inFinishApproach =
-        !decisiveRacer ||
-        decisiveRacer.state === 'FINISHED' ||
-        decisiveRacer.getPosition().z >= finishZ - AUTO_SLOWMO_RANGE_Z;
-      if (inFinishApproach) this.autoSlowMoTimer = Math.max(0, this.autoSlowMoTimer - realDt);
-      const active = this.autoSlowMoTimer > 0 && inFinishApproach;
-      if (active !== this.autoSlowMoActive) {
-        this.autoSlowMoActive = active;
-        if (!this.manualSlowMo) this.setSlowMoVisuals(active);
+      this.autoSlowMoTimer = Math.max(0, this.autoSlowMoTimer - realDt);
+      if (this.autoSlowMoTimer === 0 && !this.manualSlowMo) {
+        this.setSlowMoVisuals(false);
       }
-    } else if (this.autoSlowMoActive) {
-      this.autoSlowMoActive = false;
-      if (!this.manualSlowMo) this.setSlowMoVisuals(false);
     }
 
-    const isSlowMo = this.manualSlowMo || this.autoSlowMoActive;
+    const isSlowMo = this.manualSlowMo || this.autoSlowMoTimer > 0;
     const timeScale = isSlowMo ? 0.22 : 1.0;
 
     // 고정 스텝 물리: 실제 경과 시간을 누적해 PHYSICS_STEP 단위로 시뮬레이션을 돌린다.

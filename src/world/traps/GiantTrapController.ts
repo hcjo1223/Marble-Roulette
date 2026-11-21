@@ -33,6 +33,8 @@ export class GiantTrapController {
   private flickCount = 0;
 
   public onFinishFlick?: (racer: RagdollRacer, flickNumber: number, isManual: boolean) => void;
+  /** 결승 자동 함정이 대상을 노리기 시작할 때(준비 동작 시작) 호출. 타격 직전 연출(슬로모션)용. */
+  public onFinishFlickStart?: (racer: RagdollRacer, flickNumber: number) => void;
 
   constructor(
     ctx: CourseBuildContext,
@@ -402,6 +404,7 @@ export class GiantTrapController {
         this.flickedRacerIds.add(target.id);
         this.flickCount++;
         this.prepareTrapForWindup(freeHand, target, false);
+        this.onFinishFlickStart?.(target, this.flickCount);
       }
     }
 
