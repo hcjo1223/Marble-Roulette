@@ -1099,10 +1099,12 @@ class RagdollDerbyGame {
     });
 
     const tSyncStart = performance.now();
+    const isTopView = this.cameraDirector.mode === 'TOP' && !this.cameraDirector.isClimaxSlowMo;
     for (const r of this.racers) {
       r.syncVisuals(
         this.cameraDirector.focusedRacerId === r.id,
-        this.cameraDirector.camera.position
+        this.cameraDirector.camera.position,
+        isTopView
       );
     }
 
