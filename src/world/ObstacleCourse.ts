@@ -59,6 +59,7 @@ export class ObstacleCourse {
   private elapsedTime: number = 0;
 
   public onFinishFlick?: (racer: RagdollRacer, flickNumber: number, isManual: boolean) => void;
+  public onFinishFlickStart?: (racer: RagdollRacer, flickNumber: number) => void;
   public onPoolSplash?: (racer: RagdollRacer, kind: 'BALLOON' | 'DUCK') => void;
   public onTubeMount?: (racer: RagdollRacer) => void;
   public onWaveHit?: (racer: RagdollRacer, isTubeRider: boolean) => void;
@@ -101,6 +102,9 @@ export class ObstacleCourse {
       this.poolCourse.spawnPoolSplash(pos, color, particles)
     );
 
+    this.giantTraps.onFinishFlickStart = (racer, flickNumber) => {
+      this.onFinishFlickStart?.(racer, flickNumber);
+    };
     this.giantTraps.onFinishFlick = (racer, flickNumber, isManual) => {
       this.crowd.triggerExcitement(1.3, 2.8);
       this.onFinishFlick?.(racer, flickNumber, isManual);
