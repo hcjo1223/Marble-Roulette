@@ -6,6 +6,23 @@ import { getTrackHeightAtZ } from '../world/courseMath';
 
 /** 카메라가 따라가는 높이의 상한: 트랙 바닥 + 이 값(m). 함정에 날아간 레이서를 따라 하늘만 비추지 않게 한다. */
 const CAMERA_FOCUS_MAX_ABOVE_TRACK = 2.5;
+/** 탑뷰가 화면에 담는 상위 인원 수. */
+const TOP_VIEW_FOCUS_COUNT = 5;
+/** 탑뷰 카메라 높이 범위(m). 상위권이 몰려 있을수록 낮아진다. (기존 고정 46m) */
+const TOP_VIEW_MIN_HEIGHT = 24;
+const TOP_VIEW_MAX_HEIGHT = 40;
+/** 카메라를 기준점에서 뒤로 뺀 거리 / 높이 (기존 14/46, 내려다보는 각도 약 66°). */
+const TOP_VIEW_BACK_RATIO = 14 / 46;
+/** 바라보는 지점(화면 세로 중앙)의 기준점 앞 거리 / 높이 (기존 6/46). */
+const TOP_VIEW_LOOK_AHEAD_RATIO = 6 / 46;
+/** 맨 뒤 사람이 기준점보다 뒤로 둘 수 있는 거리 / 높이 (화면 아래 끝 -0.38h, 버튼 줄 여유 포함). */
+const TOP_VIEW_REAR_MARGIN_RATIO = 0.25;
+/** 선두가 기준점보다 앞으로 둘 수 있는 거리 / 높이 (화면 위 끝 +0.95h, 위쪽 HUD는 약 +0.73h부터 가림 → 이름표·카메라 지연 여유 포함). */
+const TOP_VIEW_FRONT_MARGIN_RATIO = 0.5;
+/** HUD를 피해 상위권을 담을 수 있는 앞뒤 길이 / 높이 (-0.25h ~ +0.5h). */
+const TOP_VIEW_USABLE_DEPTH_RATIO = TOP_VIEW_REAR_MARGIN_RATIO + TOP_VIEW_FRONT_MARGIN_RATIO;
+/** 맵 에디터 탑뷰 높이(m). */
+const TOP_VIEW_EDITOR_HEIGHT = 36;
 /** 카메라 초점의 좌우 한계: 트랙 중심 ± 이 값(m). */
 const CAMERA_FOCUS_MAX_LATERAL = 12;
 
@@ -25,6 +42,8 @@ export class CameraDirector {
   private orbitPitch: number = 0.42;
   private orbitDist: number = 14.5;
   private topPanZ: number = 55;
+  /** 탑뷰 카메라 현재 높이(m, 세로 화면 배율 적용 전). */
+  private topHeight: number = TOP_VIEW_MAX_HEIGHT;
   private currentFinishZ: number = FINISH_Z;
   private isDragging: boolean = false;
   private prevPointer = { x: 0, y: 0 };
@@ -224,17 +243,50 @@ export class CameraDirector {
       desiredLook.set(p.x, p.y + 0.5, p.z + 1.2);
     } else if (this.mode === 'TOP') {
       // Top-down tactical overview of the course
-      let centerZ = this.topPanZ;
-      if (!this.isDragging && !this.editorMode && pool.length > 0) {
-        const sumZ = pool.reduce((acc, r) => acc + r.getPosition().z, 0);
-        centerZ = sumZ / pool.length;
-        this.topPanZ = THREE.MathUtils.lerp(this.topPanZ, centerZ, realDt * 3);
+      // 탑뷰: 꼴찌까지 다 담지 않고 상위 TOP_VIEW_FOCUS_COUNT명만 가깝게 내려다본다.
+      // 상위권이 몰려 있으면 더 낮게(근접), 벌어지면 그만큼 높여 모두 화면에 들어오게 한다.
+      const focusGroup = pool.slice(0, TOP_VIEW_FOCUS_COUNT);
+      let targetHeight = TOP_VIEW_EDITOR_HEIGHT;
+      if (!this.isDragging && !this.editorMode && focusGroup.length > 0) {
+        let minZ = Infinity;
+        let maxZ = -Infinity;
+        for (const r of focusGroup) {
+          const z = r.getPosition().z;
+          if (z < minZ) minZ = z;
+          if (z > maxZ) maxZ = z;
+        }
+        // 비스듬히 내려다보는 구도라 화면에 보이는 바닥은 기준점(topPanZ)에서
+        // 뒤로 약 0.38h, 앞으로 약 0.95h로 앞쪽이 훨씬 길다 (h = 카메라 높이).
+        // 아래쪽 버튼 줄을 피해 맨 뒤 사람은 -0.25h 안쪽, 위쪽 HUD를 피해 선두는 +0.5h 안쪽에 오도록 높이를 정한다.
+        const spread = maxZ - minZ;
+        targetHeight = THREE.MathUtils.clamp(
+          spread / TOP_VIEW_USABLE_DEPTH_RATIO,
+          TOP_VIEW_MIN_HEIGHT,
+          TOP_VIEW_MAX_HEIGHT
+        );
+        const h = targetHeight * portraitScale;
+        // 무리가 짧으면 화면 한가운데(기준점 +0.13h)에, 길면 맨 뒤 사람이 아래 버튼 줄 바로 위에 오게
+        // 높이 상한 때문에 다 못 담으면 1등을 우선해 화면 위쪽 안에 둔다 (뒤쪽 순위가 아래로 빠짐)
+        const desiredPanZ = Math.max(
+          Math.min(
+            (minZ + maxZ) * 0.5 - h * TOP_VIEW_LOOK_AHEAD_RATIO,
+            minZ + h * TOP_VIEW_REAR_MARGIN_RATIO
+          ),
+          maxZ - h * TOP_VIEW_FRONT_MARGIN_RATIO
+        );
+        // 달리는 상위권을 늦게 따라가 선두가 위쪽 HUD에 가리지 않도록 추적 속도를 높게 둔다
+        this.topPanZ = THREE.MathUtils.lerp(this.topPanZ, desiredPanZ, Math.min(1, realDt * 6));
+      } else if (!this.editorMode) {
+        targetHeight = this.topHeight;
       }
+      // 높이는 천천히 따라가 화면이 출렁이지 않게 한다.
+      this.topHeight = THREE.MathUtils.lerp(this.topHeight, targetHeight, Math.min(1, realDt * 1.6));
       const cx = trackCenterXAtZ ? trackCenterXAtZ(this.topPanZ) : 0;
       const baseY = -Math.tan(0.088) * this.topPanZ;
-      const topHeight = this.editorMode ? 36 * portraitScale : 46 * portraitScale;
-      desiredPos.set(cx, baseY + topHeight, this.topPanZ - 14);
-      desiredLook.set(cx, baseY, this.topPanZ + 6);
+      const topHeight = this.topHeight * portraitScale;
+      // 내려다보는 각도는 기존(높이 46, 뒤 14, 앞 6)과 같은 비율로 유지
+      desiredPos.set(cx, baseY + topHeight, this.topPanZ - topHeight * TOP_VIEW_BACK_RATIO);
+      desiredLook.set(cx, baseY, this.topPanZ + topHeight * TOP_VIEW_LOOK_AHEAD_RATIO);
     } else if (this.mode === 'LAST') {
       // Follow Last Place racer
       const lastRacer = pool[pool.length - 1];
