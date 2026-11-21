@@ -183,6 +183,15 @@ export class CameraDirector {
     return out;
   }
 
+  private readonly _projected = new THREE.Vector3();
+
+  /** 메인 카메라 화면 안(가장자리 margin 제외)에 보이는 위치인지. */
+  public isOnScreen(worldPos: THREE.Vector3, margin: number = 0.85): boolean {
+    this.camera.updateMatrixWorld();
+    const v = this._projected.copy(worldPos).project(this.camera);
+    return v.z < 1 && Math.abs(v.x) <= margin && Math.abs(v.y) <= margin;
+  }
+
   public update(
     realDt: number,
     sortedRacers: RagdollRacer[],
