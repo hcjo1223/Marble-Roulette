@@ -1,3 +1,7 @@
+import {
+  pickRespawnCheckpoint,
+  type RespawnCheckpoint,
+} from '../world/respawnCheckpoints';
 import * as THREE from 'three';
 import RAPIER from '@dimforge/rapier3d';
 import type { MapTheme, ParticipantEntry, RacerState } from '../types';
@@ -14,6 +18,24 @@ import {
 export const GROUP_ENV = 0x0001;
 export const GROUP_TORSO = 0x0002;
 export const GROUP_LIMB = 0x0004;
+
+/** 리스폰 직후 넉백 면역 시간(초). */
+const RESPAWN_SHIELD_SEC = 1.5;
+/** 탑뷰 이름표 크기: 카메라 거리 / 이 값 (작을수록 크게). */
+const TOP_VIEW_LABEL_DIST_DIVISOR = 14;
+/** 탑뷰 이름표 최대 배율. */
+const TOP_VIEW_LABEL_MAX_SCALE = 5.5;
+/** 구제 이동 직후 넉백 면역 시간(초). */
+const RESCUE_SHIELD_SEC = 2.5;
+/** 튜브에서 내린 뒤 다시 탈 수 있을 때까지의 시간(초). */
+const TUBE_REMOUNT_COOLDOWN_SEC = 4;
+/** 이 시간(초) 안에 이미 이 횟수만큼 떨어졌으면 다음 리스폰은 다음 체크포인트로 건너뛴다. */
+const REPEAT_RESPAWN_WINDOW_SEC = 20;
+const REPEAT_RESPAWN_COUNT = 2;
+/** 이 시간(초) 동안 PROGRESS_STEP_Z 만큼도 전진하지 못하면 앞으로 옮겨 준다. */
+const STUCK_RESCUE_SEC = 20;
+const PROGRESS_STEP_Z = 3;
+const STUCK_RESCUE_ADVANCE_Z = 8;
 
 export function makeCollisionGroups(membership: number, filter: number): number {
   return ((membership & 0xffff) << 16) | (filter & 0xffff);
@@ -99,6 +121,20 @@ export class RagdollRacer {
   private turboTimer: number = 0;
   private turboBonus: number = 0;
   private tubeRideTimer: number = 0;
+  private tubeSpeedBonus: number = 4.3;
+  private tubeRemountReadyAt: number = 0;
+  private lastTotalRacers: number = 1;
+  /** 리스폰 직후 장애물 넉백(triggerRagdoll·파도)을 무시하는 보호 시간(초). */
+  private respawnShieldTimer: number = 0;
+  /** 마지막 구간 리스폰 체크포인트(코스가 설정). 비어 있으면 finishZ - 32 사용. */
+  private respawnCheckpoints: RespawnCheckpoint[] = [];
+  /** 이번 레이스에서 낙하·이탈로 리스폰한 횟수. */
+  public respawnCount: number = 0;
+  /** 이번 레이스에서 구제 장치(반복 낙하 건너뛰기·진척 없음 이동)가 발동한 횟수. */
+  public rescueCount: number = 0;
+  private recentRespawnTimes: number[] = [];
+  private progressAnchorZ: number = -Infinity;
+  private progressAnchorTime: number = 0;
   private waitingIdleTicks: number = 0;
 
   constructor(
@@ -316,10 +352,32 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  /**
+   * 튜브 탑승. 앞선 레이서가 튜브로 격차를 더 벌리지 않도록 순위별로 효과를 차등한다.
+   * - 상위 25%: 속도 +2.0, 탑승 시간 ×0.52 (5.8초 → 약 3초)
+   * - 중위: 속도 +4.3, 탑승 시간 그대로
+   * - 하위 25%: 속도 +5.0, 탑승 시간 ×1.12 (5.8초 → 약 6.5초)
+   * 내린 뒤 TUBE_REMOUNT_COOLDOWN_SEC 동안은 다시 탈 수 없다.
+   */
   public mountTube(colorHex: number = 0xff5fa2, duration: number = 5.6): boolean {
     if (this.state === 'FINISHED' || this.state === 'RAGDOLL') return false;
     if (this.tubeRideTimer > 0.6) return false;
-    this.tubeRideTimer = duration;
+    if (this.elapsedTime < this.tubeRemountReadyAt) return false;
+
+    const rankRatio =
+      this.lastTotalRacers > 1 ? (this.rank - 1) / (this.lastTotalRacers - 1) : 0.5;
+    let durationScale = 1.0;
+    if (rankRatio < 0.25) {
+      this.tubeSpeedBonus = 2.0;
+      durationScale = 0.52;
+    } else if (rankRatio > 0.75) {
+      this.tubeSpeedBonus = 5.0;
+      durationScale = 1.12;
+    } else {
+      this.tubeSpeedBonus = 4.3;
+    }
+    this.tubeRideTimer = duration * durationScale;
+    this.tubeRemountReadyAt = this.elapsedTime + this.tubeRideTimer + TUBE_REMOUNT_COOLDOWN_SEC;
     this.slowDebuffTimer = 0;
     this.slowFactor = 1.0;
 
@@ -348,8 +406,17 @@ export class RagdollRacer {
     return this.tubeRideTimer > 0;
   }
 
+  public setRespawnCheckpoints(checkpoints: RespawnCheckpoint[]): void {
+    this.respawnCheckpoints = checkpoints;
+  }
+
+  public hasRespawnShield(): boolean {
+    return this.respawnShieldTimer > 0;
+  }
+
   public applyWavePush(forceX: number, forceZ: number, isBigWave: boolean): void {
     if (this.state === 'FINISHED') return;
+    if (this.respawnShieldTimer > 0) return;
     if (this.isRidingTube()) {
       // Tube riders glide/surf high over waves with reduced sideways knockback
       this.torsoBody.applyImpulse(
@@ -434,6 +501,7 @@ export class RagdollRacer {
     duration: number = 1.25
   ): void {
     if (this.state === 'FINISHED') return;
+    if (this.respawnShieldTimer > 0) return;
 
     this.dismountTube();
     if (this.lowCostMode) {
@@ -521,6 +589,37 @@ export class RagdollRacer {
     this.updateBillboardLabel();
   }
 
+  private getCheckpointBehind(z: number, finishZ: number): RespawnCheckpoint {
+    return this.respawnCheckpoints.length > 0
+      ? pickRespawnCheckpoint(this.respawnCheckpoints, z)
+      : { z: finishZ - 32 };
+  }
+
+  /** z보다 앞에 있는 가장 가까운 체크포인트 (없으면 null). */
+  private getCheckpointAhead(z: number): RespawnCheckpoint | null {
+    let best: RespawnCheckpoint | null = null;
+    for (const cp of this.respawnCheckpoints) {
+      if (cp.z > z + 0.5 && (!best || cp.z < best.z)) best = cp;
+    }
+    return best;
+  }
+
+  private checkpointToPosition(
+    cp: RespawnCheckpoint,
+    trackCenterXAtZ: (z: number) => number,
+    trackHalfWidthAtZ: (z: number) => number,
+    trackHeightAtZ: (z: number) => number
+  ): THREE.Vector3 {
+    const halfW = trackHalfWidthAtZ(cp.z);
+    const spread = cp.spread ?? 1.2;
+    const offset = THREE.MathUtils.clamp(
+      (cp.xOffset ?? 0) + (Math.random() * 2 - 1) * spread,
+      -(halfW - 1.5),
+      halfW - 1.5
+    );
+    return new THREE.Vector3(trackCenterXAtZ(cp.z) + offset, trackHeightAtZ(cp.z) + 2.8, cp.z);
+  }
+
   public updateAIAndPhysics(
     dt: number,
     totalRacers: number,
@@ -532,6 +631,7 @@ export class RagdollRacer {
     finishZ: number = 132
   ): void {
     this.elapsedTime += dt;
+    this.lastTotalRacers = totalRacers;
     const pos = this.torsoBody.translation();
     this._cachedPos.set(pos.x, pos.y, pos.z);
     const vel = this.torsoBody.linvel();
@@ -547,6 +647,9 @@ export class RagdollRacer {
       if (this.turboTimer === 0) {
         this.turboBonus = 0;
       }
+    }
+    if (this.respawnShieldTimer > 0) {
+      this.respawnShieldTimer = Math.max(0, this.respawnShieldTimer - dt);
     }
     if (this.tubeRideTimer > 0) {
       this.tubeRideTimer = Math.max(0, this.tubeRideTimer - dt);
@@ -574,6 +677,8 @@ export class RagdollRacer {
     }
 
     if (this.state === 'WAITING') {
+      this.progressAnchorZ = pos.z;
+      this.progressAnchorTime = this.elapsedTime;
       this.waitingIdleTicks++;
       if (!this.lowCostMode || this.waitingIdleTicks < 8 || this.waitingIdleTicks % 4 === 0) {
         this.maintainUprightPose(0, dt, 0.4);
@@ -629,16 +734,66 @@ export class RagdollRacer {
       : pos.y < expectedFloorY - 8.5;
 
     if (isFallen || isOffSide) {
-      const safeZ = inLastSection ? finishZ - 32 : Math.max(4, pos.z - 4);
-      const safeCX = trackCenterXAtZ(safeZ);
-      const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
-      const respawnPos = new THREE.Vector3(
-        safeCX + (Math.random() - 0.5) * safeSpan,
-        trackHeightAtZ(safeZ) + 2.8,
-        safeZ
+      // 최근 리스폰 기록 (반복 낙오자 판정용)
+      this.recentRespawnTimes = this.recentRespawnTimes.filter(
+        (t) => this.elapsedTime - t < REPEAT_RESPAWN_WINDOW_SEC
       );
+      const isRepeatFaller = this.recentRespawnTimes.length >= REPEAT_RESPAWN_COUNT;
+      this.recentRespawnTimes.push(this.elapsedTime);
+
+      let respawnPos: THREE.Vector3;
+      if (inLastSection) {
+        // 마지막 구간: 떨어진 위치 뒤의 가장 가까운 안전 체크포인트(장애물 통과 직후 지점).
+        // 짧은 시간에 여러 번 떨어진 레이서는 다음 체크포인트로 건너뛰게 해 준다.
+        let cp = this.getCheckpointBehind(pos.z, finishZ);
+        if (isRepeatFaller) {
+          const next = this.getCheckpointAhead(cp.z);
+          if (next) {
+            cp = next;
+            this.rescueCount++;
+          }
+        }
+        respawnPos = this.checkpointToPosition(cp, trackCenterXAtZ, trackHalfWidthAtZ, trackHeightAtZ);
+      } else {
+        const safeZ = Math.max(4, pos.z - 4);
+        const safeSpan = Math.max(2.0, trackHalfWidthAtZ(safeZ) - 2.5);
+        const safeX = trackCenterXAtZ(safeZ) + (Math.random() - 0.5) * safeSpan;
+        respawnPos = new THREE.Vector3(safeX, trackHeightAtZ(safeZ) + 2.8, safeZ);
+      }
       this.teleportTo(respawnPos);
+      this.respawnCount++;
+      this.respawnShieldTimer = RESPAWN_SHIELD_SEC;
       if (onRespawnCallback) onRespawnCallback(respawnPos);
+      return;
+    }
+
+    // 진척 없음 구제: 일정 시간 동안 앞으로 3m도 못 나가면 조금 앞으로 옮겨 준다.
+    // (벽 끼임, 역방향 벨트+넉백 왕복, 장애물 연속 피격 등 어떤 원인이든 레이스가 끝없이 늘어지지 않게)
+    if (pos.z > this.progressAnchorZ + PROGRESS_STEP_Z) {
+      this.progressAnchorZ = pos.z;
+      this.progressAnchorTime = this.elapsedTime;
+    } else if (this.elapsedTime - this.progressAnchorTime > STUCK_RESCUE_SEC) {
+      const fromZ = Math.max(this.progressAnchorZ, pos.z);
+      let rescuePos: THREE.Vector3;
+      const aheadCp =
+        fromZ + STUCK_RESCUE_ADVANCE_Z >= lastSectionStartZ ? this.getCheckpointAhead(fromZ) : null;
+      if (aheadCp) {
+        rescuePos = this.checkpointToPosition(aheadCp, trackCenterXAtZ, trackHalfWidthAtZ, trackHeightAtZ);
+      } else {
+        // 앞쪽 체크포인트가 없으면 무조건 앞으로 (절대 뒤로 되돌리지 않는다)
+        const z = Math.min(fromZ + STUCK_RESCUE_ADVANCE_Z, finishZ - 2);
+        rescuePos = new THREE.Vector3(
+          trackCenterXAtZ(z) + (Math.random() * 2 - 1) * 1.5,
+          trackHeightAtZ(z) + 2.8,
+          z
+        );
+      }
+      this.teleportTo(rescuePos);
+      this.rescueCount++;
+      this.respawnShieldTimer = RESCUE_SHIELD_SEC;
+      this.progressAnchorZ = rescuePos.z;
+      this.progressAnchorTime = this.elapsedTime;
+      if (onRespawnCallback) onRespawnCallback(rescuePos);
       return;
     }
 
@@ -684,7 +839,7 @@ export class RagdollRacer {
     const rankRatio = totalRacers > 1 ? (this.rank - 1) / (totalRacers - 1) : 0;
     const comebackMultiplier = 1.0 + rankRatio * 0.19;
     const activeSlow = this.slowDebuffTimer > 0 ? this.slowFactor : 1.0;
-    const activeTurbo = (this.turboTimer > 0 ? this.turboBonus : 0) + (this.tubeRideTimer > 0 ? 4.3 : 0);
+    const activeTurbo = (this.turboTimer > 0 ? this.turboBonus : 0) + (this.tubeRideTimer > 0 ? this.tubeSpeedBonus : 0);
     const desiredForwardSpeed = (this.baseSpeed * comebackMultiplier + activeTurbo) * activeSlow;
     const maxLat = this.isKartMode ? 11.0 : 8.0;
     const desiredLateralSpeed = Math.max(
@@ -872,7 +1027,11 @@ export class RagdollRacer {
     this.updateBillboardLabel(true);
   }
 
-  public syncVisuals(isFocused: boolean, cameraPos?: THREE.Vector3): void {
+  /**
+   * @param isTopView 탑뷰(높은 곳에서 내려다보는 카메라)일 때 true.
+   *   이름표가 화면에서 일정한 크기로 크게 보이도록 거리 비례 상한을 풀어 준다.
+   */
+  public syncVisuals(isFocused: boolean, cameraPos?: THREE.Vector3, isTopView: boolean = false): void {
     const syncMeshToBody = (mesh: THREE.Mesh, body: RAPIER.RigidBody) => {
       const p = body.translation();
       const r = body.rotation();
@@ -921,10 +1080,12 @@ export class RagdollRacer {
           cameraPos.z - torsoPos.z
         )
       : 14;
-    const distScale = Math.max(
-      isFocused ? 0.85 : 0.45,
-      Math.min(2.15, camDist / 13.2)
-    );
+    // 일반 카메라: 거리에 비례해 키우되 2.15배 상한.
+    // 탑뷰: 카메라가 46m 이상 떨어져 늘 상한에 걸려 이름이 작아 보이므로,
+    //       거리에 비례(화면상 크기 일정)하게 두고 일반 상한 대비 약 1.6배 크게 보이도록 한다.
+    const distScale = isTopView
+      ? THREE.MathUtils.clamp(camDist / TOP_VIEW_LABEL_DIST_DIVISOR, 2.15, TOP_VIEW_LABEL_MAX_SCALE)
+      : Math.max(isFocused ? 0.85 : 0.45, Math.min(2.15, camDist / 13.2));
     const labelMat = this.labelSprite.material as THREE.SpriteMaterial;
     labelMat.opacity = !isFocused && camDist < 5.2 ? Math.max(0.28, (camDist - 2.0) / 3.2) : 1.0;
     this.labelSprite.scale.set(2.3 * distScale, 0.65 * distScale, 1);

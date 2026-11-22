@@ -1,5 +1,6 @@
 import type { MapTheme, WinningRule } from '../types';
 import type { RagdollRacer } from '../entities/RagdollRacer';
+import { MAP_DISPLAY_NAMES } from '../game/mapThemeConfig';
 
 export interface ShareCardPayload {
   winner: RagdollRacer;
@@ -17,13 +18,6 @@ export interface GeneratedShareCard {
   filename: string;
 }
 
-const MAP_LABELS: Record<MapTheme, string> = {
-  PLAYGROUND: '🏫 맵1 · 운동장 경주',
-  TAEKWONDO: '🥋 맵2 · 태비태권도',
-  DINOSAUR: '🏎️ 맵3 · 공룡 카트',
-  POOL: '🏊 맵4 · 수영장 스플래시',
-  FALLGUYS: '🎪 맵5 · 폴가이즈',
-};
 
 function loadImage(src: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -123,7 +117,7 @@ export async function generateFallguysShareCard(
   drawJellyCard(250, 152, W - 500, 54, 27, '#ffffff', '#dfd1e8', 6);
   ctx.fillStyle = '#2b2440';
   ctx.font = '700 26px "Jua", "Plus Jakarta Sans", sans-serif';
-  ctx.fillText(`${MAP_LABELS[mapTheme]}  ·  참가자 ${sortedRacers.length}명`, W / 2, 180);
+  ctx.fillText(`${MAP_DISPLAY_NAMES[mapTheme].label}  ·  참가자 ${sortedRacers.length}명`, W / 2, 180);
 
   // 3. Framed 3D WebGL Race Screenshot
   const shotX = 72;

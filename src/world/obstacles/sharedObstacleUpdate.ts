@@ -57,6 +57,9 @@ export function resetMysteryDoors(mysteryDoors: MysteryDoorData[]): void {
   }
 }
 
+/** 회전 막대 넉백의 뒤쪽(-z) 성분 하한. */
+const SWEEPER_MAX_BACKWARD_Z = -10;
+
 export function updateSharedObstacles(
   lists: SharedObstacleLists,
   dt: number,
@@ -97,7 +100,8 @@ export function updateSharedObstacles(
             {
               x: tangentX * 34 + (Math.random() - 0.5) * 8,
               y: 24 + Math.random() * 10,
-              z: tangentZ * 24 - 5,
+              // 뒤로 튕기는 힘은 제한: 최대 -29까지 밀려 15m 넘게 후퇴하던 것을 막는다
+              z: Math.max(SWEEPER_MAX_BACKWARD_Z, tangentZ * 24 - 5),
             },
             undefined,
             1.25

@@ -35,6 +35,11 @@ import {
   createWaterBalloonMesh,
 } from './poolModels';
 
+/** 수영장 트랙 반폭(courseMath.getTrackHalfWidthAtZ 의 POOL 값과 동일). */
+const POOL_TRACK_HALF_WIDTH = 9.0;
+/** 같은 레이서가 큰 파도에 다시 휩쓸리기까지의 최소 간격(초). */
+const WAVE_HIT_COOLDOWN_SEC = 2.5;
+
 export class PoolCourseSystem {
   private ctx: CourseBuildContext;
   private shared: SharedObstacleSystem;
@@ -486,11 +491,12 @@ export class PoolCourseSystem {
 
     // 파도 존 물살 밀림 구간 (Z = 101 ~ 123): 좌우 교차 강풍 물살 + 3D 롤링 파도 벽!
     if (isLight) {
-      this.addWaveCurrentZone(102, 114, 1, 18.0, 1.35, 0);
+      this.addWaveCurrentZone(102, 114, 1, 14.0, 1.35, 0);
       this.shared.createSweeper(120, 0, 5.0, 3.4, 2, 0x22d3ee);
     } else {
-      this.addWaveCurrentZone(101, 111.5, 1, 24.0, 1.65, 0);
-      this.addWaveCurrentZone(112.5, 123, -1, 25.0, 1.8, Math.PI * 0.65);
+      // 두 존 사이(110.5~113.5)에 3m 숨 쉴 구간을 둔다 (리스폰 체크포인트 z 112)
+      this.addWaveCurrentZone(101, 110.5, 1, 17.0, 1.65, 0);
+      this.addWaveCurrentZone(113.5, 123, -1, 17.5, 1.8, Math.PI * 0.65);
       this.shared.createSweeper(114, -1.5, 5.0, 3.8, 2, 0x22d3ee);
       this.shared.createSweeper(125, 0, 5.6, 4.2, 3, 0x0ea5e9);
     }
@@ -806,17 +812,25 @@ export class PoolCourseSystem {
         if (rPos.z < wz.zMin || rPos.z > wz.zMax) continue;
         if (rPos.y - getTrackHeightAtZ(rPos.z) > 3.6) continue;
 
-        // 1) 지속 물살 밀림 힘 (튜브 탑승자는 저항력 감소)
-        r.applyWavePush(wz.dirX * wz.pushForce * dt, -1.8 * dt, false);
+        const localCenter = getTrackCenterX(rPos.z);
+        // 물살 방향 쪽 벽까지 남은 거리. 벽에 가까울수록 물살을 약하게 해 벽에 붙어 갇히지 않게 한다.
+        const towardWall = (rPos.x - localCenter) * wz.dirX;
+        const distToWall = POOL_TRACK_HALF_WIDTH - towardWall;
+        const wallFade = THREE.MathUtils.clamp((distToWall - 1.5) / 3.0, 0, 1);
+
+        // 1) 지속 물살 밀림 힘 (튜브 탑승자는 저항력 감소). 앞쪽으로 아주 약하게 흘려 보내 뒤로 밀리지 않게 한다.
+        r.applyWavePush(wz.dirX * wz.pushForce * wallFade * dt, 0.8 * dt, false);
 
         // 2) 3D 파도 벽과 정면 충돌 시 파도 휩쓸림 (튜브 탑승자는 파도 타기 서핑 점프!)
-        const localCenter = getTrackCenterX(rPos.z);
         const curWaveX = localCenter + waveOffsetX;
         if (Math.abs(rPos.x - curWaveX) < 1.85) {
-          const lastHit = wz.hitCooldowns.get(r.id) || 0;
-          if (elapsedTime - lastHit > 0.95) {
+          const lastHit = wz.hitCooldowns.get(r.id) ?? -Infinity;
+          if (elapsedTime - lastHit > WAVE_HIT_COOLDOWN_SEC) {
             wz.hitCooldowns.set(r.id, elapsedTime);
-            r.applyWavePush(wz.dirX * 36, -6, true);
+            // 벽에 붙어 있으면 파도가 벽에서 튕겨 나오듯 가운데 쪽으로 밀어 준다.
+            // z는 +8 → 넉백 시 앞뒤 변화 없이(뒤로 밀리지 않게) 옆·위로만 날린다.
+            const sideForce = distToWall < 2.5 ? -wz.dirX * 16 : wz.dirX * 30;
+            r.applyWavePush(sideForce, 8, true);
             this.spawnPoolSplash(
               new THREE.Vector3(rPos.x, getTrackHeightAtZ(rPos.z) + 0.25, rPos.z),
               '#38bdf8',

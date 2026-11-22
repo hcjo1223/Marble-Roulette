@@ -105,8 +105,7 @@ function buildZone1DesksAndSweepers(ctx: CourseBuildContext, shared: SharedObsta
         { z: 35, offset: -2.6 },
       ]
     : [
-        { z: 16, offset: -5.2 },
-        { z: 18, offset: 4.5 },
+        // 출발 직후(z 16·18) 책상은 첫 회전 막대와 겹쳐 3.5초에 16명 중 12명이 넘어지게 만들어 제거
         { z: 22, offset: -1.5 },
         { z: 24, offset: 5.5 },
         { z: 29, offset: -5.8 },
@@ -158,7 +157,8 @@ function buildZone1DesksAndSweepers(ctx: CourseBuildContext, shared: SharedObsta
   if (isLight) {
     shared.createSweeper(28, 0, 5.2, 2.7, 2, 0x2563eb);
   } else {
-    shared.createSweeper(20, -2.5, 4.6, 3.3, 3, 0x2563eb);
+    // z 20 회전 막대는 출발 무리가 흩어지기 전에 닿아 3.5초에 절반 이상을 넘어뜨려 제거.
+    // 대신 첫 책상 줄(z 22~24)을 지난 뒤 회전 막대 두 개를 만난다.
     shared.createSweeper(28, 2.6, 4.8, -3.6, 2, 0xf43f5e);
     shared.createSweeper(35, 0, 5.8, 3.8, 3, 0x0ea5e9);
   }

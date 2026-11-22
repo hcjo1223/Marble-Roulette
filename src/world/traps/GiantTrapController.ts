@@ -24,9 +24,17 @@ export class GiantTrapController {
   ) => void;
 
   private giantFlickHands: GiantFlickHandData[] = [];
+  /** 한 번이라도 함정에 맞은 레이서 (결승 슬로모션 시작 조건 판정용). */
   private flickedRacerIds: Set<string> = new Set();
+  /**
+   * 이번 레이스에서 발동한 함정 횟수. 같은 사람이 다시 맞을 수 있으므로
+   * "맞은 사람 수"가 아니라 "발동 횟수"로 남은 함정 수를 계산한다.
+   */
+  private flickCount = 0;
 
   public onFinishFlick?: (racer: RagdollRacer, flickNumber: number, isManual: boolean) => void;
+  /** 결승 자동 함정이 대상을 노리기 시작할 때(준비 동작 시작) 호출. 타격 직전 연출(슬로모션)용. */
+  public onFinishFlickStart?: (racer: RagdollRacer, flickNumber: number) => void;
 
   constructor(
     ctx: CourseBuildContext,
@@ -322,7 +330,13 @@ export class GiantTrapController {
 
   public getRemainingFinishFlicks(totalRacers: number): number {
     const maxFlicks = this.getMaxFlicks(totalRacers);
-    return Math.max(0, maxFlicks - this.flickedRacerIds.size);
+    return Math.max(0, maxFlicks - this.flickCount);
+  }
+
+  private isTargetedByActiveTrap(racerId: string): boolean {
+    return this.giantFlickHands.some(
+      (h) => (h.phase === 'WINDUP' || h.phase === 'IMPACT') && h.targetRacer?.id === racerId
+    );
   }
 
   public hasBeenFlicked(racerId: string): boolean {
@@ -347,6 +361,7 @@ export class GiantTrapController {
 
   public reset(): void {
     this.flickedRacerIds.clear();
+    this.flickCount = 0;
     for (const hand of this.giantFlickHands) {
       hand.phase = 'IDLE';
       hand.phaseTimer = 0;
@@ -370,22 +385,26 @@ export class GiantTrapController {
     const maxFlicks = this.getMaxFlicks(racers.length);
     const triggerFlickZoneZ = this.ctx.finishZ - 5.8;
 
-    if (isRacing && this.flickMode !== 'OFF' && this.flickedRacerIds.size < maxFlicks) {
+    if (isRacing && this.flickMode !== 'OFF' && this.flickCount < maxFlicks) {
       const candidates = racers
         .filter((r) => {
-          if (r.state === 'FINISHED' || this.flickedRacerIds.has(r.id)) return false;
+          // 이미 맞은 사람도 다시 결승 구간에 들어오면 또 맞을 수 있다.
+          // 단, 지금 다른 함정이 노리고 있는(준비~타격 중인) 사람은 중복으로 노리지 않는다.
+          if (r.state === 'FINISHED' || this.isTargetedByActiveTrap(r.id)) return false;
           const p = r.getPosition();
           return p.z >= triggerFlickZoneZ && p.z < this.ctx.finishZ - 0.8;
         })
         .sort((a, b) => b.getPosition().z - a.getPosition().z);
 
       for (const target of candidates) {
-        if (this.flickedRacerIds.size >= maxFlicks) break;
+        if (this.flickCount >= maxFlicks) break;
         const freeHand = this.giantFlickHands.find((h) => h.phase === 'IDLE');
         if (!freeHand) break;
 
         this.flickedRacerIds.add(target.id);
+        this.flickCount++;
         this.prepareTrapForWindup(freeHand, target, false);
+        this.onFinishFlickStart?.(target, this.flickCount);
       }
     }
 
@@ -395,7 +414,7 @@ export class GiantTrapController {
         if (
           hand.slotIndex === 0 &&
           this.flickMode !== 'OFF' &&
-          this.flickedRacerIds.size < maxFlicks
+          this.flickCount < maxFlicks
         ) {
           hand.root.visible = true;
           const hoverZ = this.ctx.finishZ - 4.0;
@@ -468,7 +487,7 @@ export class GiantTrapController {
         const target = hand.targetRacer;
         if (!target || target.state === 'FINISHED') {
           hand.phase =
-            this.flickMode !== 'OFF' && this.flickedRacerIds.size < maxFlicks ? 'IDLE' : 'DONE';
+            this.flickMode !== 'OFF' && this.flickCount < maxFlicks ? 'IDLE' : 'DONE';
           hand.phaseTimer = 0;
           hand.targetRacer = null;
           hand.isManual = false;
@@ -695,7 +714,7 @@ export class GiantTrapController {
           sound.playCrowdGasp();
 
           if (this.onFinishFlick) {
-            this.onFinishFlick(target, this.flickedRacerIds.size, hand.isManual);
+            this.onFinishFlick(target, this.flickCount, hand.isManual);
           }
         }
       } else if (hand.phase === 'IMPACT') {
@@ -783,7 +802,7 @@ export class GiantTrapController {
           if (
             this.flickMode !== 'OFF' &&
             (hand.slotIndex === 0 || this.flickMode === 'CHAOS') &&
-            this.flickedRacerIds.size < maxFlicks
+            this.flickCount < maxFlicks
           ) {
             hand.phase = 'IDLE';
             hand.phaseTimer = 0;

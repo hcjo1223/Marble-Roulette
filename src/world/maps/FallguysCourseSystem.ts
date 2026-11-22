@@ -19,6 +19,11 @@ import type {
 } from '../courseTypes';
 import type { SharedObstacleSystem } from '../obstacles/SharedObstacleSystem';
 
+/** 사라지는 바닥: 밟은 뒤 하얗게 깜빡이는 시간(초). 이 시간이 지나면 빨간색으로 바뀐다. */
+const TILE_WARN_SEC = 0.5;
+/** 사라지는 바닥: 빨간색으로 바뀐 뒤 사라지기까지의 시간(초). */
+const TILE_RED_SEC = 0.5;
+
 export class FallguysCourseSystem {
   private ctx: CourseBuildContext;
   private shared: SharedObstacleSystem;
@@ -746,7 +751,7 @@ export class FallguysCourseSystem {
       }
     }
 
-    // 4) 사라지는 바닥: 밟으면 깜빡이며 3초 뒤 사라짐, 1.5초 뒤 재생성
+    // 4) 사라지는 바닥: 밟으면 0.5초 깜빡임 → 빨간색 0.5초 → 사라짐(총 1초), 1.5초 뒤 재생성
     for (const tile of this.disappearingTiles) {
       if (tile.spawnAnimTimer > 0) {
         tile.spawnAnimTimer = Math.max(0, tile.spawnAnimTimer - dt);
@@ -773,19 +778,21 @@ export class FallguysCourseSystem {
 
       if (tile.state === 'BLINKING') {
         tile.timer -= dt;
-        const progress = Math.min(1, Math.max(0, 1 - tile.timer / 3.0));
-        const blinkFreq = 7.5 + progress * 18.0;
-        const flashOn = Math.sin(elapsedTime * blinkFreq) > 0;
-        if (flashOn) {
-          tile.material.color.setHex(0xff4d6d);
-          tile.material.emissive.setHex(0xff9f1c);
-          tile.material.emissiveIntensity = 0.95;
-        } else {
-          tile.material.color.setHex(0xffffff);
+        const elapsedSinceStep = TILE_WARN_SEC + TILE_RED_SEC - tile.timer;
+        if (elapsedSinceStep < TILE_WARN_SEC) {
+          // 1단계(밟은 직후 0.5초): 하얗게 깜빡이며 밟혔다는 신호
+          const flashOn = Math.sin(elapsedTime * 28) > 0;
+          tile.material.color.setHex(flashOn ? 0xffffff : tile.baseColorHex);
           tile.material.emissive.setHex(tile.baseColorHex);
-          tile.material.emissiveIntensity = 0.3;
+          tile.material.emissiveIntensity = flashOn ? 0.45 : 0.2;
+        } else {
+          // 2단계(0.5초 후): 빨간색으로 바뀌고 살짝 가라앉다가 사라짐
+          const redProgress = Math.min(1, (elapsedSinceStep - TILE_WARN_SEC) / TILE_RED_SEC);
+          tile.material.color.setHex(0xff1f3d);
+          tile.material.emissive.setHex(0xff1f3d);
+          tile.material.emissiveIntensity = 0.75 + redProgress * 0.25;
+          tile.mesh.position.y = tile.centerY - redProgress * 0.12;
         }
-        tile.mesh.position.y = tile.centerY - progress * 0.1;
 
         if (tile.timer <= 0) {
           tile.state = 'GONE';
@@ -801,7 +808,7 @@ export class FallguysCourseSystem {
         continue;
       }
 
-      // state === 'SOLID': 레이서가 밟으면 3초 경고 카운트다운 시작
+      // state === 'SOLID': 레이서가 밟으면 사라짐 카운트다운 시작
       if (!isRacing) continue;
       for (const r of racers) {
         if (r.state === 'FINISHED') continue;
@@ -813,7 +820,7 @@ export class FallguysCourseSystem {
           rPos.y <= tile.centerY + 2.2
         ) {
           tile.state = 'BLINKING';
-          tile.timer = 3.0;
+          tile.timer = TILE_WARN_SEC + TILE_RED_SEC;
           break;
         }
       }
